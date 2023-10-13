@@ -42,4 +42,9 @@ void forEachFunctor(F &f, Args... args) {
     constexpr bool less = I < N;
     forEach<I, N>(BoolAsType<less>(), f, args...);
 }
+
+template <size_t N, typename T>
+constexpr typename MemberTypeGetter<N, T>::Type get(const T *const t) {
+    return t->*pointerToMember<N, T>();
+}
 } // namespace struct_iterator
