@@ -13,25 +13,25 @@ struct Example {
 };
 
 namespace struct_iterator {
-template <> struct MemberTypeGetter<Example, 0> {
+template <> struct MemberTypeGetter<0, Example> {
     typedef float Type;
 };
-template <> struct MemberTypeGetter<Example, 1> {
+template <> struct MemberTypeGetter<1, Example> {
     typedef int32_t Type;
 };
-template <> struct MemberTypeGetter<Example, 2> {
+template <> struct MemberTypeGetter<2, Example> {
     typedef uint32_t Type;
 };
 template <>
-PointerToMember<Example, 0>::Type pointerToMember<Example, 0>(void) {
+PointerToMember<0, Example>::Type pointerToMember<0, Example>(void) {
     return &Example::a;
 }
 template <>
-PointerToMember<Example, 1>::Type pointerToMember<Example, 1>(void) {
+PointerToMember<1, Example>::Type pointerToMember<1, Example>(void) {
     return &Example::b;
 }
 template <>
-PointerToMember<Example, 2>::Type pointerToMember<Example, 2>(void) {
+PointerToMember<2, Example>::Type pointerToMember<2, Example>(void) {
     return &Example::c;
 }
 } // namespace struct_iterator
@@ -41,8 +41,8 @@ struct Displayer {
 
     template <size_t N, typename T> void operator()(const T *const t) {
         typedef
-            typename struct_iterator::MemberTypeGetter<T, N>::Type MemberType;
-        MemberType value = t->*struct_iterator::pointerToMember<T, N>();
+            typename struct_iterator::MemberTypeGetter<N, T>::Type MemberType;
+        MemberType value = t->*struct_iterator::pointerToMember<N, T>();
         str.append(std::to_string(value));
         str.append(std::string(", "));
     }
@@ -51,12 +51,12 @@ struct Displayer {
 struct Counter {
     size_t count = 0;
 
-    template <size_t N, typename T> void operator()() { count += 1; }
+    template <size_t N> void operator()() { count += 1; }
 };
 
 void count() {
     Counter counter;
-    struct_iterator::forEachFunctor<0, 10, size_t, Counter>(counter);
+    struct_iterator::forEachFunctor<0, 10, Counter>(counter);
     printf("%d\n", counter.count);
     assert(counter.count == 10);
 }
@@ -64,7 +64,6 @@ void count() {
 void display_values() {
     const Example example{};
     Displayer displayer;
-    struct_iterator::forEachFunctor<0, 3, Example, Displayer>(displayer,
-                                                              &example);
+    struct_iterator::forEachFunctor<0, 3, Displayer>(displayer, &example);
     std::cout << displayer.str << std::endl;
 }
