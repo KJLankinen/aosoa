@@ -36,31 +36,35 @@ PointerToMember<Example, 2>::Type pointerToMember<Example, 2>(void) {
 }
 } // namespace struct_iterator
 
-template <typename T, size_t N> struct Displayer {
-    void operator()(const T *const t, std::string *display_str) {
+struct Displayer {
+    std::string str;
+
+    template <size_t N, typename T> void operator()(const T *const t) {
         typedef
             typename struct_iterator::MemberTypeGetter<T, N>::Type MemberType;
         MemberType value = t->*struct_iterator::pointerToMember<T, N>();
-        display_str->append(std::to_string(value));
-        display_str->append(std::string(", "));
+        str.append(std::to_string(value));
+        str.append(std::string(", "));
     }
 };
 
-template <typename T, size_t N> struct Counter {
-    void operator()(T *count) { *count += N; }
+struct Counter {
+    size_t count = 0;
+
+    template <size_t N, typename T> void operator()() { count += 1; }
 };
 
 void count() {
-    size_t count = 0;
-    struct_iterator::forEachFunctor<10, size_t, Counter>(&count);
-    printf("%d\n", count);
-    assert(count == 45);
+    Counter counter;
+    struct_iterator::forEachFunctor<0, 10, size_t, Counter>(counter);
+    printf("%d\n", counter.count);
+    assert(counter.count == 10);
 }
 
 void display_values() {
     const Example example{};
-    std::string display_str;
-    struct_iterator::forEachFunctor<3, Example, Displayer>(&example,
-                                                           &display_str);
-    std::cout << display_str << std::endl;
+    Displayer displayer;
+    struct_iterator::forEachFunctor<0, 3, Example, Displayer>(displayer,
+                                                              &example);
+    std::cout << displayer.str << std::endl;
 }

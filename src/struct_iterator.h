@@ -23,27 +23,23 @@ typename PointerToMember<T, N>::Type pointerToMember(void);
 template <bool> struct BoolAsType {};
 
 // Call the function/functor of type F with arguments Args while I < N
-template <size_t I, size_t N, typename T,
-          template <typename U, size_t M> typename F, typename... Args>
-void forEach(BoolAsType<true>, Args... args) {
+template <size_t I, size_t N, typename T, typename F, typename... Args>
+void forEach(BoolAsType<true>, F &f, Args... args) {
     // Call once...
-    F<T, I> f{};
-    f(args...);
+    f.template operator()<I, T>(args...);
 
     // ... or more times, if I + 1 < N
     constexpr size_t J = I + 1;
     constexpr bool less = J < N;
-    forEach<J, N, T, F>(BoolAsType<less>(), args...);
+    forEach<J, N, T>(BoolAsType<less>(), f, args...);
 }
 
-template <size_t I, size_t N, typename T,
-          template <typename U, size_t M> typename F, typename... Args>
-void forEach(BoolAsType<false>, Args... args) {}
+template <size_t I, size_t N, typename T, typename F, typename... Args>
+void forEach(BoolAsType<false>, F &f, Args... args) {}
 
-template <size_t N, typename T, template <typename U, size_t M> typename F,
-          typename... Args>
-void forEachFunctor(Args... args) {
-    constexpr bool less = 0 < N;
-    forEach<0, N, T, F>(BoolAsType<less>(), args...);
+template <size_t I, size_t N, typename T, typename F, typename... Args>
+void forEachFunctor(F &f, Args... args) {
+    constexpr bool less = I < N;
+    forEach<I, N, T>(BoolAsType<less>(), f, args...);
 }
 } // namespace struct_iterator
