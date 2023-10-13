@@ -17,14 +17,14 @@ size_t constexpr operator""_m(const char *str, size_t size) {
 }
 
 struct Example {
-    float a = 0.0f;
+    float length = 0.0f;
     int32_t b = 1;
     uint32_t c = 2;
 
     template <size_t I> constexpr auto get() const;
 
     constexpr static size_t index(const std::string_view name) {
-        if (name == "a") {
+        if (name == "length") {
             return 0;
         } else if (name == "b") {
             return 1;
@@ -36,7 +36,7 @@ struct Example {
     }
 
     constexpr static size_t index(size_t hash) {
-        if (hash == "a"_m) {
+        if (hash == "length"_m) {
             return 0;
         } else if (hash == "b"_m) {
             return 1;
@@ -106,7 +106,7 @@ void display_values() {
     Displayer displayer;
     struct_iterator::forEachFunctor<0, 3, Displayer>(displayer, &example);
     std::cout << displayer.str << std::endl;
-    float a = example.get<"a"_m>();
+    float a = example.get<"length"_m>();
     uint32_t b = example.get<"b"_m>();
     int32_t c = example.get<"c"_m>();
     std::cout << a << b << c << std::endl;
