@@ -7,6 +7,15 @@
 #include <string>
 #include <string_view>
 
+constexpr size_t hash(const char *str, size_t size, size_t n = 0,
+                      size_t h = 2166136261) {
+    return n == size ? h : hash(str, size, n + 1, (h * 16777619) ^ (str[n]));
+}
+
+size_t constexpr operator""_m(const char *str, size_t size) {
+    return hash(str, size);
+}
+
 struct Example {
     float a = 0.0f;
     int32_t b = 1;
@@ -21,11 +30,21 @@ struct Example {
             return 1;
         } else if (name == "c") {
             return 2;
-        } else {
-            // static_assert(false, "No such member on example");
         }
 
-        return 0;
+        return ~static_cast<size_t>(0);
+    }
+
+    constexpr static size_t index(size_t hash) {
+        if (hash == "a"_m) {
+            return 0;
+        } else if (hash == "b"_m) {
+            return 1;
+        } else if (hash == "c"_m) {
+            return 2;
+        }
+
+        return ~static_cast<size_t>(0);
     }
 };
 
@@ -54,7 +73,7 @@ PointerToMember<2, Example>::Type pointerToMember<2, Example>(void) {
 } // namespace struct_iterator
 
 template <size_t I> constexpr auto Example::get() const {
-    return struct_iterator::get<I>(this);
+    return struct_iterator::get<Example::index(I)>(this);
 }
 
 struct Displayer {
@@ -87,6 +106,8 @@ void display_values() {
     Displayer displayer;
     struct_iterator::forEachFunctor<0, 3, Displayer>(displayer, &example);
     std::cout << displayer.str << std::endl;
-    float a = example.get<Example::index("a")>();
-    std::cout << a << std::endl;
+    float a = example.get<"a"_m>();
+    uint32_t b = example.get<"b"_m>();
+    int32_t c = example.get<"c"_m>();
+    std::cout << a << b << c << std::endl;
 }
