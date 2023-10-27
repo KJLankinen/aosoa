@@ -20,8 +20,9 @@ size_t constexpr operator""_idx(const char *str, size_t size) {
 }
 
 // Implementation for generic tuple-like struct for holding stuff
-template <typename... Types> class Tuple;
-template <> class Tuple<> {
+template <typename... Types> struct Tuple;
+template <> struct Tuple<> {
+  private:
     template <size_t I, size_t N> auto getter(BoolAsType<true>) = delete;
     template <size_t I, size_t N> auto getter(BoolAsType<false>) = delete;
     template <size_t I, size_t N, typename U>
@@ -29,24 +30,20 @@ template <> class Tuple<> {
     template <size_t I, size_t N, typename U>
     void setter(BoolAsType<false>, U u) = delete;
     std::ostream &output(std::ostream &os) const { return os; }
-
-  public:
-    template <size_t I, size_t N> void fromTuple(void *[], size_t) const {}
 };
-template <typename T, typename... Types> class Tuple<T, Types...> {
+template <typename T, typename... Types> struct Tuple<T, Types...> {
     // All instantiations are friends with each other
-    template <typename... Ts> friend class Tuple;
+    template <typename... Ts> friend struct Tuple;
 
-    T value;
-    Tuple<Types...> next;
+    T head;
+    Tuple<Types...> tail;
 
-  public:
     constexpr Tuple() {}
     constexpr Tuple(const Tuple<T, Types...> &tuple)
-        : value(tuple.value), next(tuple.next) {}
-    constexpr Tuple(T t, Tuple<Types...> tuple) : value(t), next(tuple) {}
+        : head(tuple.head), tail(tuple.tail) {}
+    constexpr Tuple(T t, Tuple<Types...> tuple) : head(t), tail(tuple) {}
     template <typename... Args>
-    constexpr Tuple(T t, Args... args) : value(t), next(args...) {}
+    constexpr Tuple(T t, Args... args) : head(t), tail(args...) {}
 
     template <size_t N> auto get() const {
         constexpr bool LESS = 0 < N;
@@ -61,44 +58,36 @@ template <typename T, typename... Types> class Tuple<T, Types...> {
     template <typename... Ts>
     friend std::ostream &operator<<(std::ostream &, const Tuple<Ts...> &);
 
-    template <size_t I, size_t N>
-    void fromTuple(void *pointers[], size_t i) const {
-        T *const t = static_cast<T *>(pointers[I]);
-        t[i] = value;
-        constexpr size_t NEXT = I + 1;
-        next.template fromTuple<NEXT, N>(pointers, i);
-    }
-
   private:
-    // These getters/setters find the value from the correct depth of the tuple
+    // These getters/setters find the head from the correct depth of the tuple
     template <size_t I, size_t N> auto getter(BoolAsType<true>) const {
         constexpr size_t NEXT = I + 1;
         constexpr bool LESS = NEXT < N;
-        return next.template getter<NEXT, N>(BoolAsType<LESS>{});
+        return tail.template getter<NEXT, N>(BoolAsType<LESS>{});
     }
 
     template <size_t I, size_t N> auto getter(BoolAsType<false>) const {
-        return value;
+        return head;
     }
 
     template <size_t I, size_t N, typename U>
     void setter(BoolAsType<true>, U u) {
         constexpr size_t NEXT = I + 1;
         constexpr bool LESS = NEXT < N;
-        next.template setter<NEXT, N>(BoolAsType<LESS>{}, u);
+        tail.template setter<NEXT, N>(BoolAsType<LESS>{}, u);
     }
 
     template <size_t I, size_t N, typename U>
     void setter(BoolAsType<false>, U u) {
-        value = u;
+        head = u;
     }
 
     std::ostream &output(std::ostream &os) const {
         if constexpr (sizeof...(Types) == 0) {
-            os << value;
+            os << head;
         } else if constexpr (sizeof...(Types) > 0) {
-            os << value << ", ";
-            return next.output(os);
+            os << head << ", ";
+            return tail.output(os);
         }
 
         return os;
@@ -155,20 +144,30 @@ auto getPointer(BoolAsType<false>, void *ptr) {
 }
 
 template <size_t I, size_t N>
-[[nodiscard]] auto toTuple(BoolAsType<false>, void *const[], size_t) {
+[[nodiscard]] auto toTuple(void *const[], size_t) {
     return Tuple<>{};
 }
 
 template <size_t I, size_t N, typename T, typename... Types>
-[[nodiscard]] auto toTuple(BoolAsType<true>, void *const pointers[], size_t i) {
+[[nodiscard]] auto toTuple(void *const pointers[], size_t i) {
     const T *const t = static_cast<T *>(pointers[I]);
     constexpr size_t NEXT = I + 1;
-    constexpr bool LESS = NEXT < N;
-    return Tuple<T, Types...>(
-        t[i], toTuple<NEXT, N, Types...>(BoolAsType<LESS>{}, pointers, i));
+    return Tuple<T, Types...>(t[i], toTuple<NEXT, N, Types...>(pointers, i));
 }
 
-template <typename... Pairs> class StructureOfArrays {
+template <size_t I, size_t N>
+void fromTuple(void *[], size_t, const Tuple<> &) {}
+
+template <size_t I, size_t N, typename T, typename... Types>
+void fromTuple(void *pointers[], size_t i, const Tuple<T, Types...> &tuple) {
+    T *const t = static_cast<T *>(pointers[I]);
+    t[i] = tuple.head;
+    constexpr size_t NEXT = I + 1;
+    fromTuple<NEXT, N>(pointers, i, tuple.tail);
+}
+
+template <typename... Pairs> struct StructureOfArrays {
+  private:
     static constexpr size_t NUM_MEMBERS = sizeof...(Pairs);
     static constexpr size_t UIDS[NUM_MEMBERS] = {PairTraits<Pairs>::i...};
 
@@ -177,6 +176,9 @@ template <typename... Pairs> class StructureOfArrays {
     const size_t num_elements = 0;
 
   public:
+    typedef Tuple<typename PairTraits<Pairs>::Type...> Aos;
+    typedef Tuple<typename PairTraits<Pairs>::Type *...> Soa;
+
     constexpr StructureOfArrays() {}
     constexpr StructureOfArrays(size_t n) : num_elements(n) {}
 
@@ -220,18 +222,18 @@ template <typename... Pairs> class StructureOfArrays {
 
     // Return a tuple
     [[nodiscard]] auto get(size_t i) const {
-        constexpr bool LESS = 0 < NUM_MEMBERS;
         return toTuple<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
-            BoolAsType<LESS>{}, pointers, i);
+            pointers, i);
     }
 
+    // Set a single value
     template <size_t UID> void set(size_t i, auto value) {
         get<UID>()[i] = value;
     }
 
-    void set(size_t i,
-             const Tuple<typename PairTraits<Pairs>::Type...> &tuple) {
-        tuple.template fromTuple<0, NUM_MEMBERS>(pointers, i);
+    // Set by a tuple
+    void set(size_t i, const Aos &tuple) {
+        fromTuple<0, NUM_MEMBERS>(pointers, i, tuple);
     }
 
     template <size_t I> [[nodiscard]] auto &operator[](size_t i) {
