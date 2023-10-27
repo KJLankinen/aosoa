@@ -155,6 +155,12 @@ void soa() {
 
     soa.set(2, Soa::Aos(true, 1337.0f, 1337.0, -12));
     std::cout << soa2.get(2) << std::endl;
+
+    Soa::Soa soa_pointers = soa.getSoa(0);
+    bool *bptr = soa_pointers.get<0>();
+    for (size_t i = 0; i < n; i++) {
+        std::cout << *(bptr++) << std::endl;
+    }
 }
 
 void test() {

@@ -143,27 +143,36 @@ auto getPointer(BoolAsType<false>, void *ptr) {
     return getPointer<NEXT, N, Types...>(BoolAsType<NEXT == N>{}, ptr);
 }
 
-template <size_t I, size_t N>
-[[nodiscard]] auto toTuple(void *const[], size_t) {
+template <size_t I, size_t N> [[nodiscard]] auto toAos(void *const[], size_t) {
     return Tuple<>{};
 }
 
 template <size_t I, size_t N, typename T, typename... Types>
-[[nodiscard]] auto toTuple(void *const pointers[], size_t i) {
+[[nodiscard]] auto toAos(void *const pointers[], size_t i) {
     const T *const t = static_cast<T *>(pointers[I]);
     constexpr size_t NEXT = I + 1;
-    return Tuple<T, Types...>(t[i], toTuple<NEXT, N, Types...>(pointers, i));
+    return Tuple<T, Types...>(t[i], toAos<NEXT, N, Types...>(pointers, i));
 }
 
-template <size_t I, size_t N>
-void fromTuple(void *[], size_t, const Tuple<> &) {}
+template <size_t I, size_t N> [[nodiscard]] auto toSoa(void *const[], size_t) {
+    return Tuple<>{};
+}
 
 template <size_t I, size_t N, typename T, typename... Types>
-void fromTuple(void *pointers[], size_t i, const Tuple<T, Types...> &tuple) {
+[[nodiscard]] auto toSoa(void *const pointers[], size_t i) {
+    T *const t = static_cast<T *>(pointers[I]);
+    constexpr size_t NEXT = I + 1;
+    return Tuple<T *, Types *...>(&t[i], toSoa<NEXT, N, Types...>(pointers, i));
+}
+
+template <size_t I, size_t N> void fromAos(void *[], size_t, const Tuple<> &) {}
+
+template <size_t I, size_t N, typename T, typename... Types>
+void fromAos(void *pointers[], size_t i, const Tuple<T, Types...> &tuple) {
     T *const t = static_cast<T *>(pointers[I]);
     t[i] = tuple.head;
     constexpr size_t NEXT = I + 1;
-    fromTuple<NEXT, N>(pointers, i, tuple.tail);
+    fromAos<NEXT, N>(pointers, i, tuple.tail);
 }
 
 template <typename... Pairs> struct StructureOfArrays {
@@ -221,8 +230,14 @@ template <typename... Pairs> struct StructureOfArrays {
     }
 
     // Return a tuple
-    [[nodiscard]] auto get(size_t i) const {
-        return toTuple<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
+    [[nodiscard]] Aos get(size_t i) const {
+        return toAos<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
+            pointers, i);
+    }
+
+    // Return a tuple of pointers
+    [[nodiscard]] Soa getSoa(size_t i) const {
+        return toSoa<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
             pointers, i);
     }
 
@@ -232,8 +247,8 @@ template <typename... Pairs> struct StructureOfArrays {
     }
 
     // Set by a tuple
-    void set(size_t i, const Aos &tuple) {
-        fromTuple<0, NUM_MEMBERS>(pointers, i, tuple);
+    void set(size_t i, const Aos &aos) {
+        fromAos<0, NUM_MEMBERS>(pointers, i, aos);
     }
 
     template <size_t I> [[nodiscard]] auto &operator[](size_t i) {
