@@ -1,4 +1,4 @@
-#include "struct_iterator.h"
+#include "aosoa.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -12,7 +12,7 @@ constexpr size_t hash(const char *str, size_t size, size_t n = 0,
     return n == size ? h : hash(str, size, n + 1, (h * 16777619) ^ (str[n]));
 }
 
-size_t constexpr operator""_m(const char *str, size_t size) {
+size_t constexpr operator""_idx(const char *str, size_t size) {
     return hash(str, size);
 }
 
@@ -36,11 +36,11 @@ struct Example {
     }
 
     constexpr static size_t index(size_t hash) {
-        if (hash == "length"_m) {
+        if (hash == "length"_hash) {
             return 0;
-        } else if (hash == "b"_m) {
+        } else if (hash == "b"_hash) {
             return 1;
-        } else if (hash == "c"_m) {
+        } else if (hash == "c"_hash) {
             return 2;
         }
 
@@ -60,7 +60,7 @@ template <> struct MemberTypeGetter<2, Example> {
 };
 template <>
 PointerToMember<0, Example>::Type pointerToMember<0, Example>(void) {
-    return &Example::a;
+    return &Example::length;
 }
 template <>
 PointerToMember<1, Example>::Type pointerToMember<1, Example>(void) {
@@ -106,8 +106,8 @@ void display_values() {
     Displayer displayer;
     struct_iterator::forEachFunctor<0, 3, Displayer>(displayer, &example);
     std::cout << displayer.str << std::endl;
-    float a = example.get<"length"_m>();
-    uint32_t b = example.get<"b"_m>();
-    int32_t c = example.get<"c"_m>();
+    float a = example.get<"length"_idx>();
+    uint32_t b = example.get<"b"_idx>();
+    int32_t c = example.get<"c"_idx>();
     std::cout << a << b << c << std::endl;
 }
