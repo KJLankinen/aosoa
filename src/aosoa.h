@@ -58,7 +58,14 @@ size_t constexpr operator""_idx(const char *str, size_t size) {
 }
 
 // Implementation for generic tuple-like struct for holding stuff
-template <typename... Ts> class Tuple;
+template <size_t I, typename T> struct Pair {};
+template <typename> struct PairTraits;
+template <size_t I, typename T> struct PairTraits<Pair<I, T>> {
+    static constexpr size_t i = I;
+    using Type = T;
+};
+
+template <typename... Types> class Tuple;
 template <> class Tuple<> {
     template <size_t I, size_t N> auto getter(BoolAsType<true>) = delete;
     template <size_t I, size_t N> auto getter(BoolAsType<false>) = delete;
@@ -67,18 +74,16 @@ template <> class Tuple<> {
     template <size_t I, size_t N, typename U>
     void setter(BoolAsType<false>, U u) = delete;
 };
-template <typename T, typename... Ts> class Tuple<T, Ts...> {
+template <typename T, typename... Types> class Tuple<T, Types...> {
     // All instantiations are friends with each other
     template <typename... Us> friend class Tuple;
 
     T value;
-    Tuple<Ts...> next;
-    const size_t idx;
+    Tuple<Types...> next;
 
   public:
     template <typename... Args>
-    constexpr Tuple(T t, size_t idx, Args... args)
-        : value(t), idx(idx), next(args...) {}
+    constexpr Tuple(T t, Args... args) : value(t), next(args...) {}
 
     template <size_t N> auto get() const {
         constexpr bool LESS = 0 < N;
@@ -113,6 +118,35 @@ template <typename T, typename... Ts> class Tuple<T, Ts...> {
     void setter(BoolAsType<false>, U u) {
         value = u;
     }
+};
 
+template <typename... Pairs> class Thingie {
+    static constexpr size_t indices[sizeof...(Pairs)] = {
+        PairTraits<Pairs>::i...};
+    Tuple<typename PairTraits<Pairs>::Type...> tuple;
+
+  public:
+    template <typename... Args>
+    constexpr Thingie(Args... args) : tuple(args...) {}
+
+    template <size_t I> auto get() const {
+        constexpr bool EQ = I == indices[0];
+        constexpr size_t N = Thingie::linearIndex<I, 0>(BoolAsType<EQ>{});
+        return tuple.template get<N>();
+    }
+
+  private:
+    // Find the N for which indices[N] == I
+    template <size_t I, size_t N>
+    static constexpr size_t linearIndex(BoolAsType<false>) {
+        constexpr size_t NEXT = N + 1;
+        constexpr bool EQ = I == indices[NEXT];
+        return Thingie::linearIndex<I, NEXT>(BoolAsType<EQ>{});
+    }
+
+    template <size_t I, size_t N>
+    static constexpr size_t linearIndex(BoolAsType<true>) {
+        return N;
+    }
 };
 } // namespace aosoa

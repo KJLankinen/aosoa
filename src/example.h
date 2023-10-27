@@ -7,14 +7,7 @@
 #include <string>
 #include <string_view>
 
-constexpr size_t hash(const char *str, size_t size, size_t n = 0,
-                      size_t h = 2166136261) {
-    return n == size ? h : hash(str, size, n + 1, (h * 16777619) ^ (str[n]));
-}
-
-size_t constexpr operator""_idx(const char *str, size_t size) {
-    return hash(str, size);
-}
+using aosoa::operator""_idx;
 
 struct Example {
     float length = 0.0f;
@@ -112,15 +105,14 @@ void display_values() {
 }
 
 void aosoatest() {
-    aosoa::Tuple<bool, float, int> bfi(false, "booly"_idx, 2.5f, "floaty"_idx,
-                                       1, "indie"_idx);
-    bfi.set<0>(true);
-    bfi.set<1>(2.5f);
-    bfi.set<2>(1);
+    aosoa::Thingie<aosoa::Pair<"booly"_idx, bool>,
+                   aosoa::Pair<"floaty"_idx, float>,
+                   aosoa::Pair<"indie"_idx, int>>
+        bfi(true, 2.5f, 1);
 
-    std::cout << bfi.get<0>() << std::endl;
-    std::cout << bfi.get<1>() << std::endl;
-    std::cout << bfi.get<2>() << std::endl;
+    std::cout << bfi.get<"booly"_idx>() << std::endl;
+    std::cout << bfi.get<"floaty"_idx>() << std::endl;
+    std::cout << bfi.get<"indie"_idx>() << std::endl;
 }
 
 void test() {
