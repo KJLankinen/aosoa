@@ -35,12 +35,12 @@ struct Example {
         return ~static_cast<size_t>(0);
     }
 
-    constexpr static size_t index(size_t hash) {
-        if (hash == "length"_hash) {
+    constexpr static size_t index(size_t idx) {
+        if (idx == "length"_idx) {
             return 0;
-        } else if (hash == "b"_hash) {
+        } else if (idx == "b"_idx) {
             return 1;
-        } else if (hash == "c"_hash) {
+        } else if (idx == "c"_idx) {
             return 2;
         }
 
@@ -48,7 +48,7 @@ struct Example {
     }
 };
 
-namespace struct_iterator {
+namespace aosoa {
 template <> struct MemberTypeGetter<0, Example> {
     typedef float Type;
 };
@@ -70,19 +70,18 @@ template <>
 PointerToMember<2, Example>::Type pointerToMember<2, Example>(void) {
     return &Example::c;
 }
-} // namespace struct_iterator
+} // namespace aosoa
 
 template <size_t I> constexpr auto Example::get() const {
-    return struct_iterator::get<Example::index(I)>(this);
+    return aosoa::get<Example::index(I)>(this);
 }
 
 struct Displayer {
     std::string str;
 
     template <size_t N, typename T> void operator()(const T *const t) {
-        typedef
-            typename struct_iterator::MemberTypeGetter<N, T>::Type MemberType;
-        MemberType value = t->*struct_iterator::pointerToMember<N, T>();
+        typedef typename aosoa::MemberTypeGetter<N, T>::Type MemberType;
+        MemberType value = t->*aosoa::pointerToMember<N, T>();
         str.append(std::to_string(value));
         str.append(std::string(", "));
     }
@@ -96,7 +95,7 @@ struct Counter {
 
 void count() {
     Counter counter;
-    struct_iterator::forEachFunctor<0, 10, Counter>(counter);
+    aosoa::forEachFunctor<0, 10>(counter);
     printf("%d\n", counter.count);
     assert(counter.count == 10);
 }
@@ -104,10 +103,27 @@ void count() {
 void display_values() {
     const Example example{};
     Displayer displayer;
-    struct_iterator::forEachFunctor<0, 3, Displayer>(displayer, &example);
+    aosoa::forEachFunctor<0, 3>(displayer, &example);
     std::cout << displayer.str << std::endl;
     float a = example.get<"length"_idx>();
     uint32_t b = example.get<"b"_idx>();
     int32_t c = example.get<"c"_idx>();
     std::cout << a << b << c << std::endl;
+}
+
+void aosoatest() {
+    aosoa::Tuple<bool, float, int> bfi;
+    bfi.set<0>(false);
+    bfi.set<1>(2.5f);
+    bfi.set<2>(1);
+
+    std::cout << bfi.get<0>() << std::endl;
+    std::cout << bfi.get<1>() << std::endl;
+    std::cout << bfi.get<2>() << std::endl;
+}
+
+void test() {
+    display_values();
+    count();
+    aosoatest();
 }

@@ -1,7 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace struct_iterator {
+namespace aosoa {
 // This must be specialized for each type T
 // Specifically, each T should define the 'Type' member for each N
 template <size_t N, typename T> struct MemberTypeGetter;
@@ -47,4 +47,45 @@ template <size_t N, typename T>
 constexpr typename MemberTypeGetter<N, T>::Type get(const T *const t) {
     return t->*pointerToMember<N, T>();
 }
-} // namespace struct_iterator
+
+// Implementation for generic tuple-like struct for holding stuff
+template <typename... Ts> class Tuple;
+template <> class Tuple<> {};
+template <typename T, typename... Ts> class Tuple<T, Ts...> {
+    T value;
+    Tuple<Ts...> next;
+
+  public:
+    template <size_t N> auto get() {
+        constexpr bool LESS = 0 < N;
+        return getter<0, N>(BoolAsType<LESS>{});
+    }
+
+    template <size_t N> void set(auto u) {
+        constexpr bool LESS = 0 < N;
+        setter<0, N>(BoolAsType<LESS>{}, u);
+    }
+
+    template <size_t I, size_t N> auto getter(BoolAsType<true>) {
+        constexpr size_t NEXT = I + 1;
+        constexpr bool LESS = NEXT < N;
+        return next.template getter<NEXT, N>(BoolAsType<LESS>{});
+    }
+
+    template <size_t I, size_t N> auto getter(BoolAsType<false>) {
+        return value;
+    }
+
+    template <size_t I, size_t N, typename U>
+    void setter(BoolAsType<true>, U u) {
+        constexpr size_t NEXT = I + 1;
+        constexpr bool LESS = NEXT < N;
+        next.template setter<NEXT, N>(BoolAsType<LESS>{}, u);
+    }
+
+    template <size_t I, size_t N, typename U>
+    void setter(BoolAsType<false>, U u) {
+        value = u;
+    }
+};
+} // namespace aosoa
