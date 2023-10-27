@@ -90,7 +90,7 @@ struct Counter {
 void count() {
     Counter counter;
     aosoa::forEachFunctor<0, 10>(counter);
-    printf("%d\n", counter.count);
+    printf("%ld\n", counter.count);
     assert(counter.count == 10);
 }
 
@@ -100,8 +100,8 @@ void display_values() {
     aosoa::forEachFunctor<0, 3>(displayer, &example);
     std::cout << displayer.str << std::endl;
     float a = example.get<"length"_idx>();
-    uint32_t b = example.get<"b"_idx>();
-    int32_t c = example.get<"c"_idx>();
+    int32_t b = example.get<"b"_idx>();
+    uint32_t c = example.get<"c"_idx>();
     std::cout << a << b << c << std::endl;
 }
 

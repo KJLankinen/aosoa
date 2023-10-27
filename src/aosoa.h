@@ -37,7 +37,7 @@ void forEach(BoolAsType<true>, F &f, Args... args) {
 }
 
 template <size_t I, size_t N, typename F, typename... Args>
-void forEach(BoolAsType<false>, F &f, Args... args) {}
+void forEach(BoolAsType<false>, F &, Args...) {}
 
 template <size_t I, size_t N, typename F, typename... Args>
 void forEachFunctor(F &f, Args... args) {
@@ -52,7 +52,9 @@ constexpr typename MemberTypeGetter<N, T>::Type get(const T *const t) {
 
 constexpr size_t hash(const char *str, size_t size, size_t n = 0,
                       size_t h = 2166136261) {
-    return n == size ? h : hash(str, size, n + 1, (h * 16777619) ^ (str[n]));
+    return n == size ? h
+                     : hash(str, size, n + 1,
+                            (h * 16777619) ^ static_cast<size_t>(str[n]));
 }
 
 size_t constexpr operator""_idx(const char *str, size_t size) {
@@ -161,8 +163,7 @@ template <typename... Pairs> class Aosoa {
 
 // StructureOfArrays
 template <size_t I>
-[[nodiscard]] void *setPointers(void *ptr, void **pointers, size_t &space,
-                                size_t num_elements) {
+[[nodiscard]] void *setPointers(void *ptr, void **, size_t &, size_t) {
     return ptr;
 }
 
@@ -201,8 +202,7 @@ template <typename... Pairs> class StructureOfArrays {
 
   public:
     constexpr StructureOfArrays() {}
-    constexpr StructureOfArrays(size_t num_elements)
-        : num_elements(num_elements) {}
+    constexpr StructureOfArrays(size_t n) : num_elements(n) {}
 
     [[nodiscard]] bool init(void *ptr) {
         data = ptr;
@@ -218,13 +218,13 @@ template <typename... Pairs> class StructureOfArrays {
         void *begin = static_cast<void *>(&dummy);
 
         void *pointers[NUM_MEMBERS] = {nullptr};
-        size_t space = ~0;
+        size_t space = ~size_t(0);
 
         void *end = setPointers<0, typename PairTraits<Pairs>::Type...>(
             begin, pointers, space, num_elements);
 
-        const size_t num_bytes =
-            static_cast<char *>(end) - static_cast<char *>(begin);
+        const size_t num_bytes = static_cast<size_t>(
+            static_cast<char *>(end) - static_cast<char *>(begin));
 
         return num_bytes;
     }

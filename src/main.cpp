@@ -1,4 +1,4 @@
 #include "example.h"
 #include <cstdio>
 
-int main(int argc, char **argv) { test(); }
+int main(int, char **) { test(); }
