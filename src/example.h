@@ -152,6 +152,10 @@ void soa() {
     for (size_t i = 0; i < n; i++) {
         std::cout << soa2.get(i) << std::endl;
     }
+
+    soa.set(2,
+            aosoa::Tuple<bool, float, double, int>(true, 1337.0f, 1337.0, -12));
+    std::cout << soa2.get(2) << std::endl;
 }
 
 void test() {

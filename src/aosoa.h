@@ -29,6 +29,9 @@ template <> class Tuple<> {
     template <size_t I, size_t N, typename U>
     void setter(BoolAsType<false>, U u) = delete;
     std::ostream &output(std::ostream &os) const { return os; }
+
+  public:
+    template <size_t I, size_t N> void fromTuple(void *[], size_t) const {}
 };
 template <typename T, typename... Types> class Tuple<T, Types...> {
     // All instantiations are friends with each other
@@ -57,6 +60,14 @@ template <typename T, typename... Types> class Tuple<T, Types...> {
 
     template <typename... Ts>
     friend std::ostream &operator<<(std::ostream &, const Tuple<Ts...> &);
+
+    template <size_t I, size_t N>
+    void fromTuple(void *pointers[], size_t i) const {
+        T *const t = static_cast<T *>(pointers[I]);
+        t[i] = value;
+        constexpr size_t NEXT = I + 1;
+        next.template fromTuple<NEXT, N>(pointers, i);
+    }
 
   private:
     // These getters/setters find the value from the correct depth of the tuple
@@ -144,18 +155,17 @@ auto getPointer(BoolAsType<false>, void *ptr) {
 }
 
 template <size_t I, size_t N>
-[[nodiscard]] auto fillTuple(BoolAsType<false>, void *const[], size_t) {
+[[nodiscard]] auto toTuple(BoolAsType<false>, void *const[], size_t) {
     return Tuple<>{};
 }
 
 template <size_t I, size_t N, typename T, typename... Types>
-[[nodiscard]] auto fillTuple(BoolAsType<true>, void *const pointers[],
-                             size_t i) {
+[[nodiscard]] auto toTuple(BoolAsType<true>, void *const pointers[], size_t i) {
     const T *const t = static_cast<T *>(pointers[I]);
     constexpr size_t NEXT = I + 1;
     constexpr bool LESS = NEXT < N;
     return Tuple<T, Types...>(
-        t[i], fillTuple<NEXT, N, Types...>(BoolAsType<LESS>{}, pointers, i));
+        t[i], toTuple<NEXT, N, Types...>(BoolAsType<LESS>{}, pointers, i));
 }
 
 template <typename... Pairs> class StructureOfArrays {
@@ -211,12 +221,17 @@ template <typename... Pairs> class StructureOfArrays {
     // Return a tuple
     [[nodiscard]] auto get(size_t i) const {
         constexpr bool LESS = 0 < NUM_MEMBERS;
-        return fillTuple<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
+        return toTuple<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
             BoolAsType<LESS>{}, pointers, i);
     }
 
     template <size_t UID> void set(size_t i, auto value) {
         get<UID>()[i] = value;
+    }
+
+    void set(size_t i,
+             const Tuple<typename PairTraits<Pairs>::Type...> &tuple) {
+        tuple.template fromTuple<0, NUM_MEMBERS>(pointers, i);
     }
 
     template <size_t I> [[nodiscard]] auto &operator[](size_t i) {
