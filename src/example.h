@@ -105,14 +105,25 @@ void display_values() {
 }
 
 void aosoatest() {
-    aosoa::Thingie<aosoa::Pair<"booly"_idx, bool>,
-                   aosoa::Pair<"floaty"_idx, float>,
-                   aosoa::Pair<"indie"_idx, int>>
+    aosoa::Aosoa<aosoa::IndexTypePair<"is_visible"_idx, bool>,
+                 aosoa::IndexTypePair<"radius"_idx, float>,
+                 aosoa::IndexTypePair<"num_hits"_idx, int>>
         bfi(true, 2.5f, 1);
 
-    std::cout << bfi.get<"booly"_idx>() << std::endl;
-    std::cout << bfi.get<"floaty"_idx>() << std::endl;
-    std::cout << bfi.get<"indie"_idx>() << std::endl;
+    std::cout << bfi.get<"is_visible"_idx>() << std::endl;
+    std::cout << bfi.get<"radius"_idx>() << std::endl;
+    std::cout << bfi.get<"num_hits"_idx>() << std::endl;
+
+    aosoa::Aosoa<aosoa::IndexTypePair<"is_not_visible"_idx, bool>,
+                 aosoa::IndexTypePair<"radius"_idx, float>,
+                 aosoa::IndexTypePair<"num_hits"_idx, int>>
+        bfi2(false, 2.5f, 1);
+
+    bfi2.set<"radius"_idx>(100.0f);
+
+    std::cout << bfi2.get<"is_not_visible"_idx>() << std::endl;
+    std::cout << bfi2.get<"radius"_idx>() << std::endl;
+    std::cout << bfi2.get<"num_hits"_idx>() << std::endl;
 }
 
 void test() {

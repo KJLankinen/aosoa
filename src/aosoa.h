@@ -58,9 +58,9 @@ size_t constexpr operator""_idx(const char *str, size_t size) {
 }
 
 // Implementation for generic tuple-like struct for holding stuff
-template <size_t I, typename T> struct Pair {};
+template <size_t I, typename T> struct IndexTypePair {};
 template <typename> struct PairTraits;
-template <size_t I, typename T> struct PairTraits<Pair<I, T>> {
+template <size_t I, typename T> struct PairTraits<IndexTypePair<I, T>> {
     static constexpr size_t i = I;
     using Type = T;
 };
@@ -120,19 +120,26 @@ template <typename T, typename... Types> class Tuple<T, Types...> {
     }
 };
 
-template <typename... Pairs> class Thingie {
+template <typename... Pairs> class Aosoa {
     static constexpr size_t indices[sizeof...(Pairs)] = {
         PairTraits<Pairs>::i...};
-    Tuple<typename PairTraits<Pairs>::Type...> tuple;
+    Tuple<typename PairTraits<Pairs>::Type...> aos;
+    Tuple<typename PairTraits<Pairs>::Type *...> soa;
 
   public:
     template <typename... Args>
-    constexpr Thingie(Args... args) : tuple(args...) {}
+    constexpr Aosoa(Args... args) : aos(args...), soa(&args...) {}
 
     template <size_t I> auto get() const {
         constexpr bool EQ = I == indices[0];
-        constexpr size_t N = Thingie::linearIndex<I, 0>(BoolAsType<EQ>{});
-        return tuple.template get<N>();
+        constexpr size_t N = Aosoa::linearIndex<I, 0>(BoolAsType<EQ>{});
+        return aos.template get<N>();
+    }
+
+    template <size_t I, typename T> void set(T t) {
+        constexpr bool EQ = I == indices[0];
+        constexpr size_t N = Aosoa::linearIndex<I, 0>(BoolAsType<EQ>{});
+        aos.template set<N>(t);
     }
 
   private:
@@ -141,7 +148,7 @@ template <typename... Pairs> class Thingie {
     static constexpr size_t linearIndex(BoolAsType<false>) {
         constexpr size_t NEXT = N + 1;
         constexpr bool EQ = I == indices[NEXT];
-        return Thingie::linearIndex<I, NEXT>(BoolAsType<EQ>{});
+        return Aosoa::linearIndex<I, NEXT>(BoolAsType<EQ>{});
     }
 
     template <size_t I, size_t N>
