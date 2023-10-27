@@ -48,15 +48,39 @@ constexpr typename MemberTypeGetter<N, T>::Type get(const T *const t) {
     return t->*pointerToMember<N, T>();
 }
 
+constexpr size_t hash(const char *str, size_t size, size_t n = 0,
+                      size_t h = 2166136261) {
+    return n == size ? h : hash(str, size, n + 1, (h * 16777619) ^ (str[n]));
+}
+
+size_t constexpr operator""_idx(const char *str, size_t size) {
+    return hash(str, size);
+}
+
 // Implementation for generic tuple-like struct for holding stuff
 template <typename... Ts> class Tuple;
-template <> class Tuple<> {};
+template <> class Tuple<> {
+    template <size_t I, size_t N> auto getter(BoolAsType<true>) = delete;
+    template <size_t I, size_t N> auto getter(BoolAsType<false>) = delete;
+    template <size_t I, size_t N, typename U>
+    void setter(BoolAsType<true>, U u) = delete;
+    template <size_t I, size_t N, typename U>
+    void setter(BoolAsType<false>, U u) = delete;
+};
 template <typename T, typename... Ts> class Tuple<T, Ts...> {
+    // All instantiations are friends with each other
+    template <typename... Us> friend class Tuple;
+
     T value;
     Tuple<Ts...> next;
+    const size_t idx;
 
   public:
-    template <size_t N> auto get() {
+    template <typename... Args>
+    constexpr Tuple(T t, size_t idx, Args... args)
+        : value(t), idx(idx), next(args...) {}
+
+    template <size_t N> auto get() const {
         constexpr bool LESS = 0 < N;
         return getter<0, N>(BoolAsType<LESS>{});
     }
@@ -66,13 +90,15 @@ template <typename T, typename... Ts> class Tuple<T, Ts...> {
         setter<0, N>(BoolAsType<LESS>{}, u);
     }
 
-    template <size_t I, size_t N> auto getter(BoolAsType<true>) {
+  private:
+    // These getters/setters find the value from the correct depth of the tuple
+    template <size_t I, size_t N> auto getter(BoolAsType<true>) const {
         constexpr size_t NEXT = I + 1;
         constexpr bool LESS = NEXT < N;
         return next.template getter<NEXT, N>(BoolAsType<LESS>{});
     }
 
-    template <size_t I, size_t N> auto getter(BoolAsType<false>) {
+    template <size_t I, size_t N> auto getter(BoolAsType<false>) const {
         return value;
     }
 
@@ -87,5 +113,6 @@ template <typename T, typename... Ts> class Tuple<T, Ts...> {
     void setter(BoolAsType<false>, U u) {
         value = u;
     }
+
 };
 } // namespace aosoa

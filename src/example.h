@@ -112,8 +112,9 @@ void display_values() {
 }
 
 void aosoatest() {
-    aosoa::Tuple<bool, float, int> bfi;
-    bfi.set<0>(false);
+    aosoa::Tuple<bool, float, int> bfi(false, "booly"_idx, 2.5f, "floaty"_idx,
+                                       1, "indie"_idx);
+    bfi.set<0>(true);
     bfi.set<1>(2.5f);
     bfi.set<2>(1);
 
