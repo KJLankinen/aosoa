@@ -134,7 +134,7 @@ template <typename... Pairs> class Aosoa {
     template <typename... Args>
     constexpr Aosoa(Args... args) : aos(args...), soa(&args...) {}
 
-    template <size_t I> auto get() const {
+    template <size_t I> [[nodiscard]] auto get() const {
         constexpr bool EQ = I == indices[0];
         constexpr size_t N = Aosoa::linearIndex<I, 0>(BoolAsType<EQ>{});
         return aos.template get<N>();
@@ -192,6 +192,17 @@ template <size_t I, typename T, typename... Types>
     return nullptr;
 }
 
+template <size_t I, size_t N, typename T, typename... Types>
+auto getPointer(BoolAsType<true>, void *ptr) {
+    return static_cast<T *>(ptr);
+}
+
+template <size_t I, size_t N, typename T, typename... Types>
+auto getPointer(BoolAsType<false>, void *ptr) {
+    constexpr size_t NEXT = I + 1;
+    return getPointer<NEXT, N, Types...>(BoolAsType<NEXT == N>{}, ptr);
+}
+
 template <typename... Pairs> class StructureOfArrays {
     static constexpr size_t NUM_MEMBERS = sizeof...(Pairs);
     static constexpr size_t UIDS[NUM_MEMBERS] = {PairTraits<Pairs>::i...};
@@ -229,11 +240,34 @@ template <typename... Pairs> class StructureOfArrays {
         return num_bytes;
     }
 
+    template <size_t UID> auto getPtr() const {
+        constexpr size_t N = StructureOfArrays::linearIndex<UID, 0>(
+            BoolAsType<UID == UIDS[0]>{});
+        return getPointer<0, N, typename PairTraits<Pairs>::Type...>(
+            BoolAsType<0 == N>{}, pointers[N]);
+    }
+
+    template <size_t UID> auto getValue(size_t i) const {
+        return getPtr<UID>()[i];
+    }
+
     template <typename... Ts>
     friend std::ostream &operator<<(std::ostream &,
                                     const StructureOfArrays<Ts...> &);
 
   private:
+    // Find the N for which UIDS[N] == UID
+    template <size_t UID, size_t N>
+    static constexpr size_t linearIndex(BoolAsType<false>) {
+        constexpr size_t NEXT = N + 1;
+        constexpr bool EQ = UID == UIDS[NEXT];
+        return StructureOfArrays::linearIndex<UID, NEXT>(BoolAsType<EQ>{});
+    }
+
+    template <size_t UID, size_t N>
+    static constexpr size_t linearIndex(BoolAsType<true>) {
+        return N;
+    }
 };
 
 template <typename... Pairs>

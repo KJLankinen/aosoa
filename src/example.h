@@ -136,17 +136,23 @@ void soa() {
         Soa;
 
     const size_t n = 1321357;
-    std::cout << "mem req: " << Soa::getMemReq(n) << std::endl;
+    const size_t mem_req = Soa::getMemReq(n);
+    std::cout << "mem req: " << mem_req << std::endl;
 
     Soa soa(n);
-    max_align_t x;
-    bool success = soa.init(static_cast<void *>(&x));
+    void *memory = std::malloc(mem_req);
+    bool success = soa.init(memory);
     std::cout << "success : " << success << std::endl;
 
     Soa soa2;
     std::memcpy(static_cast<void *>(&soa2), static_cast<void *>(&soa),
                 sizeof(Soa));
     std::cout << soa << soa2 << std::endl;
+
+    float value = soa.template getValue<"radius"_idx>(10);
+    std::cout << value << std::endl;
+
+    std::free(memory);
 }
 
 void test() {
