@@ -19,7 +19,7 @@ size_t constexpr operator""_idx(const char *str, size_t size) {
     return hash(str, size);
 }
 
-// Implementation for generic tuple-like struct for holding stuff
+// Tuple
 template <typename... Types> struct Tuple;
 template <> struct Tuple<> {
   private:
@@ -95,6 +95,12 @@ template <typename T, typename... Types> struct Tuple<T, Types...> {
         return os;
     }
 };
+
+template <typename... Types>
+std::ostream &operator<<(std::ostream &os, const Tuple<Types...> &tuple) {
+    os << "Tuple(";
+    return tuple.output(os) << ")\n";
+}
 
 template <size_t I, typename T> struct IndexTypePair {};
 template <typename> struct PairTraits;
@@ -299,15 +305,6 @@ std::ostream &operator<<(std::ostream &os,
     }
     os << StructureOfArrays<Pairs...>::UIDS[n - 1] << "}\n";
     os << "}\n";
-
-    return os;
-}
-
-template <typename... Types>
-std::ostream &operator<<(std::ostream &os, const Tuple<Types...> &tuple) {
-    os << "Tuple(";
-    tuple.output(os);
-    os << ")\n";
 
     return os;
 }
