@@ -105,28 +105,6 @@ void display_values() {
     std::cout << a << b << c << std::endl;
 }
 
-void aosoatest() {
-    aosoa::Aosoa<aosoa::IndexTypePair<"is_visible"_idx, bool>,
-                 aosoa::IndexTypePair<"radius"_idx, float>,
-                 aosoa::IndexTypePair<"num_hits"_idx, int>>
-        bfi(true, 2.5f, 1);
-
-    std::cout << bfi.get<"is_visible"_idx>() << std::endl;
-    std::cout << bfi.get<"radius"_idx>() << std::endl;
-    std::cout << bfi.get<"num_hits"_idx>() << std::endl;
-
-    aosoa::Aosoa<aosoa::IndexTypePair<"is_not_visible"_idx, bool>,
-                 aosoa::IndexTypePair<"radius"_idx, float>,
-                 aosoa::IndexTypePair<"num_hits"_idx, int>>
-        bfi2(false, 2.5f, 1);
-
-    bfi2.set<"radius"_idx>(100.0f);
-
-    std::cout << bfi2.get<"is_not_visible"_idx>() << std::endl;
-    std::cout << bfi2.get<"radius"_idx>() << std::endl;
-    std::cout << bfi2.get<"num_hits"_idx>() << std::endl;
-}
-
 void soa() {
     typedef aosoa::StructureOfArrays<
         aosoa::IndexTypePair<"is_visible"_idx, bool>,
@@ -135,29 +113,49 @@ void soa() {
         aosoa::IndexTypePair<"num_hits"_idx, int>>
         Soa;
 
-    const size_t n = 1321357;
+    const size_t n = 5;
     const size_t mem_req = Soa::getMemReq(n);
     std::cout << "mem req: " << mem_req << std::endl;
 
     Soa soa(n);
-    void *memory = std::malloc(mem_req);
-    bool success = soa.init(memory);
+    std::vector<uint8_t> memory(mem_req);
+    bool success = soa.init(memory.data());
     std::cout << "success : " << success << std::endl;
+
+    auto is_visible = soa.get<"is_visible"_idx>();
+    auto radii = soa.get<"radius"_idx>();
+    auto radii2 = soa.get<"radius2"_idx>();
+    auto num_hits = soa.get<"num_hits"_idx>();
+
+    for (size_t i = 0; i < n; i++) {
+        is_visible[i] = i < n / 2;
+        radii[i] = static_cast<float>(i);
+        radii2[i] = static_cast<double>(i);
+        num_hits[i] = -static_cast<int>(i);
+    }
+
+    std::cout << soa.get<"is_visible"_idx>(n / 2 - 1) << " "
+              << soa.get<"is_visible"_idx>(n / 2) << " "
+              << soa.get<"radius"_idx>(n / 2 - 1) << " "
+              << soa.get<"radius"_idx>(n / 2) << std::endl;
+
+    soa.operator[]<2>(10) = 1337.0;
+    soa.set<"radius"_idx>(10, 1338.0f);
+    std::cout << soa.get<"radius2"_idx>(10) << " " << soa.get<"radius"_idx>(10)
+              << std::endl;
 
     Soa soa2;
     std::memcpy(static_cast<void *>(&soa2), static_cast<void *>(&soa),
                 sizeof(Soa));
     std::cout << soa << soa2 << std::endl;
 
-    float value = soa.template getValue<"radius"_idx>(10);
-    std::cout << value << std::endl;
-
-    std::free(memory);
+    for (size_t i = 0; i < n; i++) {
+        std::cout << soa2.get(i) << std::endl;
+    }
 }
 
 void test() {
     display_values();
     count();
-    aosoatest();
     soa();
 }

@@ -4,51 +4,9 @@
 #include <ostream>
 
 namespace aosoa {
-// This must be specialized for each type T
-// Specifically, each T should define the 'Type' member for each N
-template <size_t N, typename T> struct MemberTypeGetter;
-
-template <size_t N, typename T> struct PointerToMember {
-    // Compare to
-    // typedef float A::* B;
-    // Now B's type is a pointer to a float member of struct A
-    typedef typename MemberTypeGetter<N, T>::Type MemberType;
-    typedef MemberType T::*Type;
-};
-
-// This returns an actual pointer to N'th member of T
-template <size_t N, typename T>
-typename PointerToMember<N, T>::Type pointerToMember(void);
-
 // BoolAsType<true> is a distinct type from BoolAsType<false> and can be
 // used to specialize functions
 template <bool> struct BoolAsType {};
-
-// Call the function/functor of type F with arguments Args while I < N
-template <size_t I, size_t N, typename F, typename... Args>
-void forEach(BoolAsType<true>, F &f, Args... args) {
-    // Call once...
-    f.template operator()<I>(args...);
-
-    // ... or more times, if I + 1 < N
-    constexpr size_t J = I + 1;
-    constexpr bool less = J < N;
-    forEach<J, N>(BoolAsType<less>(), f, args...);
-}
-
-template <size_t I, size_t N, typename F, typename... Args>
-void forEach(BoolAsType<false>, F &, Args...) {}
-
-template <size_t I, size_t N, typename F, typename... Args>
-void forEachFunctor(F &f, Args... args) {
-    constexpr bool less = I < N;
-    forEach<I, N>(BoolAsType<less>(), f, args...);
-}
-
-template <size_t N, typename T>
-constexpr typename MemberTypeGetter<N, T>::Type get(const T *const t) {
-    return t->*pointerToMember<N, T>();
-}
 
 constexpr size_t hash(const char *str, size_t size, size_t n = 0,
                       size_t h = 2166136261) {
@@ -62,13 +20,6 @@ size_t constexpr operator""_idx(const char *str, size_t size) {
 }
 
 // Implementation for generic tuple-like struct for holding stuff
-template <size_t I, typename T> struct IndexTypePair {};
-template <typename> struct PairTraits;
-template <size_t I, typename T> struct PairTraits<IndexTypePair<I, T>> {
-    static constexpr size_t i = I;
-    using Type = T;
-};
-
 template <typename... Types> class Tuple;
 template <> class Tuple<> {
     template <size_t I, size_t N> auto getter(BoolAsType<true>) = delete;
@@ -77,15 +28,20 @@ template <> class Tuple<> {
     void setter(BoolAsType<true>, U u) = delete;
     template <size_t I, size_t N, typename U>
     void setter(BoolAsType<false>, U u) = delete;
+    std::ostream &output(std::ostream &os) const { return os; }
 };
 template <typename T, typename... Types> class Tuple<T, Types...> {
     // All instantiations are friends with each other
-    template <typename... Us> friend class Tuple;
+    template <typename... Ts> friend class Tuple;
 
     T value;
     Tuple<Types...> next;
 
   public:
+    constexpr Tuple() {}
+    constexpr Tuple(const Tuple<T, Types...> &tuple)
+        : value(tuple.value), next(tuple.next) {}
+    constexpr Tuple(T t, Tuple<Types...> tuple) : value(t), next(tuple) {}
     template <typename... Args>
     constexpr Tuple(T t, Args... args) : value(t), next(args...) {}
 
@@ -98,6 +54,9 @@ template <typename T, typename... Types> class Tuple<T, Types...> {
         constexpr bool LESS = 0 < N;
         setter<0, N>(BoolAsType<LESS>{}, u);
     }
+
+    template <typename... Ts>
+    friend std::ostream &operator<<(std::ostream &, const Tuple<Ts...> &);
 
   private:
     // These getters/setters find the value from the correct depth of the tuple
@@ -122,43 +81,24 @@ template <typename T, typename... Types> class Tuple<T, Types...> {
     void setter(BoolAsType<false>, U u) {
         value = u;
     }
+
+    std::ostream &output(std::ostream &os) const {
+        if constexpr (sizeof...(Types) == 0) {
+            os << value;
+        } else if constexpr (sizeof...(Types) > 0) {
+            os << value << ", ";
+            return next.output(os);
+        }
+
+        return os;
+    }
 };
 
-template <typename... Pairs> class Aosoa {
-    static constexpr size_t indices[sizeof...(Pairs)] = {
-        PairTraits<Pairs>::i...};
-    Tuple<typename PairTraits<Pairs>::Type...> aos;
-    Tuple<typename PairTraits<Pairs>::Type *...> soa;
-
-  public:
-    template <typename... Args>
-    constexpr Aosoa(Args... args) : aos(args...), soa(&args...) {}
-
-    template <size_t I> [[nodiscard]] auto get() const {
-        constexpr bool EQ = I == indices[0];
-        constexpr size_t N = Aosoa::linearIndex<I, 0>(BoolAsType<EQ>{});
-        return aos.template get<N>();
-    }
-
-    template <size_t I, typename T> void set(T t) {
-        constexpr bool EQ = I == indices[0];
-        constexpr size_t N = Aosoa::linearIndex<I, 0>(BoolAsType<EQ>{});
-        aos.template set<N>(t);
-    }
-
-  private:
-    // Find the N for which indices[N] == I
-    template <size_t I, size_t N>
-    static constexpr size_t linearIndex(BoolAsType<false>) {
-        constexpr size_t NEXT = N + 1;
-        constexpr bool EQ = I == indices[NEXT];
-        return Aosoa::linearIndex<I, NEXT>(BoolAsType<EQ>{});
-    }
-
-    template <size_t I, size_t N>
-    static constexpr size_t linearIndex(BoolAsType<true>) {
-        return N;
-    }
+template <size_t I, typename T> struct IndexTypePair {};
+template <typename> struct PairTraits;
+template <size_t I, typename T> struct PairTraits<IndexTypePair<I, T>> {
+    static constexpr size_t i = I;
+    using Type = T;
 };
 
 // StructureOfArrays
@@ -203,6 +143,21 @@ auto getPointer(BoolAsType<false>, void *ptr) {
     return getPointer<NEXT, N, Types...>(BoolAsType<NEXT == N>{}, ptr);
 }
 
+template <size_t I, size_t N>
+[[nodiscard]] auto fillTuple(BoolAsType<false>, void *const[], size_t) {
+    return Tuple<>{};
+}
+
+template <size_t I, size_t N, typename T, typename... Types>
+[[nodiscard]] auto fillTuple(BoolAsType<true>, void *const pointers[],
+                             size_t i) {
+    const T *const t = static_cast<T *>(pointers[I]);
+    constexpr size_t NEXT = I + 1;
+    constexpr bool LESS = NEXT < N;
+    return Tuple<T, Types...>(
+        t[i], fillTuple<NEXT, N, Types...>(BoolAsType<LESS>{}, pointers, i));
+}
+
 template <typename... Pairs> class StructureOfArrays {
     static constexpr size_t NUM_MEMBERS = sizeof...(Pairs);
     static constexpr size_t UIDS[NUM_MEMBERS] = {PairTraits<Pairs>::i...};
@@ -240,15 +195,33 @@ template <typename... Pairs> class StructureOfArrays {
         return num_bytes;
     }
 
-    template <size_t UID> auto getPtr() const {
+    // Return a pointer for UID
+    template <size_t UID> [[nodiscard]] auto get() const {
         constexpr size_t N = StructureOfArrays::linearIndex<UID, 0>(
             BoolAsType<UID == UIDS[0]>{});
         return getPointer<0, N, typename PairTraits<Pairs>::Type...>(
             BoolAsType<0 == N>{}, pointers[N]);
     }
 
-    template <size_t UID> auto getValue(size_t i) const {
-        return getPtr<UID>()[i];
+    // Return an element at index i of pointer UID
+    template <size_t UID> [[nodiscard]] auto get(size_t i) const {
+        return get<UID>()[i];
+    }
+
+    // Return a tuple
+    [[nodiscard]] auto get(size_t i) const {
+        constexpr bool LESS = 0 < NUM_MEMBERS;
+        return fillTuple<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
+            BoolAsType<LESS>{}, pointers, i);
+    }
+
+    template <size_t UID> void set(size_t i, auto value) {
+        get<UID>()[i] = value;
+    }
+
+    template <size_t I> [[nodiscard]] auto &operator[](size_t i) {
+        return getPointer<0, I, typename PairTraits<Pairs>::Type...>(
+            BoolAsType<0 == I>{}, pointers[I])[i];
     }
 
     template <typename... Ts>
@@ -258,14 +231,14 @@ template <typename... Pairs> class StructureOfArrays {
   private:
     // Find the N for which UIDS[N] == UID
     template <size_t UID, size_t N>
-    static constexpr size_t linearIndex(BoolAsType<false>) {
+    [[nodiscard]] static constexpr size_t linearIndex(BoolAsType<false>) {
         constexpr size_t NEXT = N + 1;
         constexpr bool EQ = UID == UIDS[NEXT];
         return StructureOfArrays::linearIndex<UID, NEXT>(BoolAsType<EQ>{});
     }
 
     template <size_t UID, size_t N>
-    static constexpr size_t linearIndex(BoolAsType<true>) {
+    [[nodiscard]] static constexpr size_t linearIndex(BoolAsType<true>) {
         return N;
     }
 };
@@ -295,4 +268,57 @@ std::ostream &operator<<(std::ostream &os,
 
     return os;
 }
+
+template <typename... Types>
+std::ostream &operator<<(std::ostream &os, const Tuple<Types...> &tuple) {
+    os << "Tuple(";
+    tuple.output(os);
+    os << ")\n";
+
+    return os;
+}
+
+// OLD OLD OLD
+// This must be specialized for each type T
+// Specifically, each T should define the 'Type' member for each N
+template <size_t N, typename T> struct MemberTypeGetter;
+
+template <size_t N, typename T> struct PointerToMember {
+    // Compare to
+    // typedef float A::* B;
+    // Now B's type is a pointer to a float member of struct A
+    typedef typename MemberTypeGetter<N, T>::Type MemberType;
+    typedef MemberType T::*Type;
+};
+
+// This returns an actual pointer to N'th member of T
+template <size_t N, typename T>
+typename PointerToMember<N, T>::Type pointerToMember(void);
+
+// Call the function/functor of type F with arguments Args while I < N
+template <size_t I, size_t N, typename F, typename... Args>
+void forEach(BoolAsType<true>, F &f, Args... args) {
+    // Call once...
+    f.template operator()<I>(args...);
+
+    // ... or more times, if I + 1 < N
+    constexpr size_t J = I + 1;
+    constexpr bool less = J < N;
+    forEach<J, N>(BoolAsType<less>(), f, args...);
+}
+
+template <size_t I, size_t N, typename F, typename... Args>
+void forEach(BoolAsType<false>, F &, Args...) {}
+
+template <size_t I, size_t N, typename F, typename... Args>
+void forEachFunctor(F &f, Args... args) {
+    constexpr bool less = I < N;
+    forEach<I, N>(BoolAsType<less>(), f, args...);
+}
+
+template <size_t N, typename T>
+constexpr typename MemberTypeGetter<N, T>::Type get(const T *const t) {
+    return t->*pointerToMember<N, T>();
+}
+
 } // namespace aosoa
