@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <string>
@@ -126,8 +127,31 @@ void aosoatest() {
     std::cout << bfi2.get<"num_hits"_idx>() << std::endl;
 }
 
+void soa() {
+    typedef aosoa::StructureOfArrays<
+        aosoa::IndexTypePair<"is_visible"_idx, bool>,
+        aosoa::IndexTypePair<"radius"_idx, float>,
+        aosoa::IndexTypePair<"radius2"_idx, double>,
+        aosoa::IndexTypePair<"num_hits"_idx, int>>
+        Soa;
+
+    const size_t n = 1321357;
+    std::cout << "mem req: " << Soa::getMemReq(n) << std::endl;
+
+    Soa soa(n);
+    max_align_t x;
+    bool success = soa.init(static_cast<void *>(&x));
+    std::cout << "success : " << success << std::endl;
+
+    Soa soa2;
+    std::memcpy(static_cast<void *>(&soa2), static_cast<void *>(&soa),
+                sizeof(Soa));
+    std::cout << soa << soa2 << std::endl;
+}
+
 void test() {
     display_values();
     count();
     aosoatest();
+    soa();
 }

@@ -1,5 +1,7 @@
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <ostream>
 
 namespace aosoa {
 // This must be specialized for each type T
@@ -156,4 +158,107 @@ template <typename... Pairs> class Aosoa {
         return N;
     }
 };
+
+// StructureOfArrays
+template <size_t I>
+[[nodiscard]] void *setPointers(void *ptr, void **pointers, size_t &space,
+                                size_t num_elements) {
+    return ptr;
+}
+
+// Pointers array will contain memory addresses aligned properly for each type T
+// such that num_elements consecutive values of type T fit between pointers[I]
+// and pointers[I + 1], where typeof(I) == T
+template <size_t I, typename T, typename... Types>
+[[nodiscard]] void *setPointers(void *ptr, void **pointers, size_t &space,
+                                size_t num_elements) {
+    // Align input ptr for this type
+    if (ptr) {
+        ptr = std::align(alignof(T), sizeof(T), ptr, space);
+        if (ptr) {
+            pointers[I] = ptr;
+            T *t = static_cast<T *>(ptr) + num_elements;
+            ptr = static_cast<void *>(t);
+            space -= sizeof(T) * num_elements;
+
+            return setPointers<I + 1, Types...>(ptr, pointers, space,
+                                                num_elements);
+        }
+
+        return nullptr;
+    }
+
+    return nullptr;
+}
+
+template <typename... Pairs> class StructureOfArrays {
+    static constexpr size_t NUM_MEMBERS = sizeof...(Pairs);
+    static constexpr size_t UIDS[NUM_MEMBERS] = {PairTraits<Pairs>::i...};
+
+    void *data = nullptr;
+    void *pointers[NUM_MEMBERS] = {nullptr};
+    const size_t num_elements = 0;
+
+  public:
+    constexpr StructureOfArrays() {}
+    constexpr StructureOfArrays(size_t num_elements)
+        : num_elements(num_elements) {}
+
+    [[nodiscard]] bool init(void *ptr) {
+        data = ptr;
+        size_t space = getMemReq(num_elements);
+        return setPointers<0, typename PairTraits<Pairs>::Type...>(
+                   data, pointers, space, num_elements) != nullptr &&
+               space == 0;
+    }
+
+    [[nodiscard]] static size_t getMemReq(size_t num_elements) {
+        // Used for a proper alignment of any scalar type
+        max_align_t dummy;
+        void *begin = static_cast<void *>(&dummy);
+
+        void *pointers[NUM_MEMBERS] = {nullptr};
+        size_t space = ~0;
+
+        void *end = setPointers<0, typename PairTraits<Pairs>::Type...>(
+            begin, pointers, space, num_elements);
+
+        const size_t num_bytes =
+            static_cast<char *>(end) - static_cast<char *>(begin);
+
+        return num_bytes;
+    }
+
+    template <typename... Ts>
+    friend std::ostream &operator<<(std::ostream &,
+                                    const StructureOfArrays<Ts...> &);
+
+  private:
+};
+
+template <typename... Pairs>
+std::ostream &operator<<(std::ostream &os,
+                         const StructureOfArrays<Pairs...> &soa) {
+    const size_t n = StructureOfArrays<Pairs...>::NUM_MEMBERS;
+
+    os << "StructureOfArrays {\n  ";
+    os << "num members: " << n << "\n  ";
+    os << "num elements: " << soa.num_elements << "\n  ";
+    os << "memory requirement (bytes): "
+       << StructureOfArrays<Pairs...>::getMemReq(soa.num_elements) << "\n  ";
+    os << "*data: " << soa.data << "\n  ";
+    os << "*pointers[]: " << '{';
+    for (size_t i = 0; i < n - 1; i++) {
+        os << soa.pointers[i] << ", ";
+    }
+    os << soa.pointers[n - 1] << "}\n  ";
+    os << "member uids: " << '{';
+    for (size_t i = 0; i < n - 1; i++) {
+        os << StructureOfArrays<Pairs...>::UIDS[i] << ", ";
+    }
+    os << StructureOfArrays<Pairs...>::UIDS[n - 1] << "}\n";
+    os << "}\n";
+
+    return os;
+}
 } // namespace aosoa
