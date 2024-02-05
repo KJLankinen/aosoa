@@ -25,6 +25,14 @@
 #include <ostream>
 #include <utility>
 
+#ifdef __NVCC__
+#define HOST __host__
+#define DEVICE __device__
+#else
+#define HOST
+#define DEVICE
+#endif
+
 namespace aosoa {
 // Hashing used to represent constexpr strings as uint32_t values
 constexpr static uint32_t crc_table[256] = {
@@ -72,24 +80,22 @@ constexpr static uint32_t crc_table[256] = {
     0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
     0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d};
 
-constexpr uint32_t crc32(const char *str, size_t size) {
+HOST DEVICE constexpr uint32_t crc32(const char *str, size_t size) {
     uint32_t crc = 0xffffffff;
     for (size_t i = 0; i < size; i++)
         crc = (crc >> 8) ^ crc_table[(crc ^ (uint32_t)str[i]) & 0xff];
     return crc ^ 0xffffffff;
 }
 
-constexpr size_t operator""_idx(const char *str, size_t size) {
+HOST DEVICE constexpr size_t operator""_idx(const char *str, size_t size) {
     return crc32(str, size);
 }
 
-// BoolAsType<true> is a distinct type from BoolAsType<false> and can be
-// used to specialize functions
 template <bool> struct BoolAsType {};
 
 // This type is used as both the Array of Structures (Aos) type of values, as
 // well as the Structure of Arrays (Soa) type of pointers to values for the
-// StructureOfArrays template type
+// AoSoa template type
 template <typename... Types> struct Tuple;
 template <> struct Tuple<> {
   private:
@@ -110,19 +116,20 @@ template <typename T, typename... Types> struct Tuple<T, Types...> {
     T head;
     Tuple<Types...> tail;
 
-    constexpr Tuple() {}
-    constexpr Tuple(const Tuple<T, Types...> &tuple)
+    HOST DEVICE constexpr Tuple() {}
+    HOST DEVICE constexpr Tuple(const Tuple<T, Types...> &tuple)
         : head(tuple.head), tail(tuple.tail) {}
-    constexpr Tuple(T t, Tuple<Types...> tuple) : head(t), tail(tuple) {}
+    HOST DEVICE constexpr Tuple(T t, Tuple<Types...> tuple)
+        : head(t), tail(tuple) {}
     template <typename... Args>
-    constexpr Tuple(T t, Args... args) : head(t), tail(args...) {}
+    HOST DEVICE constexpr Tuple(T t, Args... args) : head(t), tail(args...) {}
 
-    template <size_t N> [[nodiscard]] constexpr auto get() const {
+    template <size_t N> HOST DEVICE [[nodiscard]] constexpr auto get() const {
         constexpr bool LESS = 0 < N;
         return getter<0, N>(BoolAsType<LESS>{});
     }
 
-    template <size_t N, typename U> constexpr void set(U u) {
+    template <size_t N, typename U> HOST DEVICE constexpr void set(U u) {
         constexpr bool LESS = 0 < N;
         setter<0, N>(BoolAsType<LESS>{}, u);
     }
@@ -133,26 +140,26 @@ template <typename T, typename... Types> struct Tuple<T, Types...> {
   private:
     // These getters/setters find the head from the correct depth of the tuple
     template <size_t I, size_t N>
-    [[nodiscard]] constexpr auto getter(BoolAsType<true>) const {
+    HOST DEVICE [[nodiscard]] constexpr auto getter(BoolAsType<true>) const {
         constexpr size_t NEXT = I + 1;
         constexpr bool LESS = NEXT < N;
         return tail.template getter<NEXT, N>(BoolAsType<LESS>{});
     }
 
     template <size_t I, size_t N>
-    [[nodiscard]] constexpr auto getter(BoolAsType<false>) const {
+    HOST DEVICE [[nodiscard]] constexpr auto getter(BoolAsType<false>) const {
         return head;
     }
 
     template <size_t I, size_t N, typename U>
-    constexpr void setter(BoolAsType<true>, U u) {
+    HOST DEVICE constexpr void setter(BoolAsType<true>, U u) {
         constexpr size_t NEXT = I + 1;
         constexpr bool LESS = NEXT < N;
         tail.template setter<NEXT, N>(BoolAsType<LESS>{}, u);
     }
 
     template <size_t I, size_t N, typename U>
-    constexpr void setter(BoolAsType<false>, U u) {
+    HOST DEVICE constexpr void setter(BoolAsType<false>, U u) {
         head = u;
     }
 
@@ -171,7 +178,7 @@ template <typename T, typename... Types> struct Tuple<T, Types...> {
 template <typename... Types>
 std::ostream &operator<<(std::ostream &os, const Tuple<Types...> &tuple) {
     os << "Tuple(";
-    return tuple.output(os) << ")\n";
+    return tuple.output(os) << ")";
 }
 
 // Helper for matching a size_t I to a type T
@@ -182,32 +189,40 @@ template <size_t I, typename T> struct PairTraits<IndexTypePair<I, T>> {
     using Type = T;
 };
 
-// TODO __device__ __host__ annotations
-template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
+template <size_t MIN_ALIGN, typename... Pairs> struct AoSoa {
   private:
     // Very simple array impl: usable on devices
     template <typename T, size_t N> struct Array {
         T data[N] = {nullptr};
-        constexpr T &operator[](size_t i) { return data[i]; }
-        constexpr const T &operator[](size_t i) const { return data[i]; }
+        HOST DEVICE constexpr T &operator[](size_t i) { return data[i]; }
+        HOST DEVICE constexpr const T &operator[](size_t i) const {
+            return data[i];
+        }
+    };
+    // Type equality
+    template <typename T, typename U> struct IsSame {
+        constexpr static bool value = false;
+    };
+    template <typename T> struct IsSame<T, T> {
+        constexpr static bool value = true;
     };
 
-    static constexpr size_t NUM_MEMBERS = sizeof...(Pairs);
-    static constexpr size_t UIDS[NUM_MEMBERS] = {PairTraits<Pairs>::i...};
+    static constexpr size_t NUM_POINTERS = sizeof...(Pairs);
+    static constexpr size_t UIDS[NUM_POINTERS] = {PairTraits<Pairs>::i...};
 
     const size_t num_elements = 0;
     void *const data = nullptr;
-    const Array<void *, NUM_MEMBERS> pointers;
+    const Array<void *, NUM_POINTERS> pointers;
 
   public:
     typedef Tuple<typename PairTraits<Pairs>::Type...> Aos;
     typedef Tuple<typename PairTraits<Pairs>::Type *...> Soa;
 
-    constexpr StructureOfArrays() {}
-    StructureOfArrays(size_t n, void *ptr)
+    HOST DEVICE constexpr AoSoa() {}
+    AoSoa(size_t n, void *ptr)
         : num_elements(n), data(ptr),
           pointers(setPointers<0, typename PairTraits<Pairs>::Type...>(
-              data, Array<void *, NUM_MEMBERS>{}, ~0ul, num_elements)) {}
+              data, Array<void *, NUM_POINTERS>{}, ~0ul, num_elements)) {}
 
     [[nodiscard]] static size_t getMemReq(size_t num_elements) {
         // Get proper begin alignment: the strictest (largest) alignment
@@ -217,7 +232,7 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
         size_t space = n;
         const auto pointers =
             setPointers<0, typename PairTraits<Pairs>::Type...>(
-                static_cast<void *>(&dummy), Array<void *, NUM_MEMBERS>{},
+                static_cast<void *>(&dummy), Array<void *, NUM_POINTERS>{},
                 std::move(space), num_elements);
 
         const size_t num_bytes = n - space;
@@ -235,53 +250,57 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
     }
 
     // Return a pointer for UID
-    template <size_t UID> [[nodiscard]] constexpr auto get() const {
-        constexpr size_t N = StructureOfArrays::linearIndex<UID, 0>(
-            BoolAsType<UID == UIDS[0]>{});
+    template <size_t UID> HOST DEVICE [[nodiscard]] constexpr auto get() const {
+        constexpr size_t N =
+            AoSoa::linearIndex<UID, 0>(BoolAsType<UID == UIDS[0]>{});
         return getPointer<0, N, typename PairTraits<Pairs>::Type...>(
             BoolAsType<0 == N>{}, pointers[N]);
     }
 
+    // Return an element at index I of pointer UID
+    template <size_t UID, size_t I>
+    HOST DEVICE [[nodiscard]] constexpr auto get() const {
+        static_assert(I < NUM_POINTERS, "Out of bounds access");
+        return get<UID>()[I];
+    }
+
     // Return an element at index i of pointer UID
-    template <size_t UID> [[nodiscard]] constexpr auto get(size_t i) const {
+    template <size_t UID>
+    HOST DEVICE [[nodiscard]] constexpr auto get(size_t i) const {
         return get<UID>()[i];
     }
 
     // Return a tuple
-    [[nodiscard]] constexpr Aos get(size_t i) const {
-        return toAos<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
-            pointers, i);
-    }
-
-    // Return a tuple of pointers
-    [[nodiscard]] constexpr Soa getSoa(size_t i) const {
-        return toSoa<0, NUM_MEMBERS, typename PairTraits<Pairs>::Type...>(
-            pointers, i);
+    template <typename T>
+    HOST DEVICE [[nodiscard]] constexpr T get(size_t i) const {
+        return toTuple<T, 0, NUM_POINTERS, typename PairTraits<Pairs>::Type...>(
+            pointers.data, i);
     }
 
     // Set a single value
-    template <size_t UID, typename T> constexpr void set(size_t i, T value) {
+    template <size_t UID, typename T>
+    HOST DEVICE constexpr void set(size_t i, T value) {
         get<UID>()[i] = value;
     }
 
     // Set by a tuple
-    constexpr void set(size_t i, const Aos &aos) {
-        fromAos<0, NUM_MEMBERS>(pointers, i, aos);
+    template <typename T> HOST DEVICE constexpr void set(size_t i, const T &t) {
+        fromTuple<T, 0, NUM_POINTERS>(pointers.data, i, t);
     }
 
-    template <size_t I> [[nodiscard]] constexpr auto &operator[](size_t i) {
+    template <size_t I>
+    [[nodiscard]] HOST DEVICE constexpr auto &operator[](size_t i) {
         return getPointer<0, I, typename PairTraits<Pairs>::Type...>(
             BoolAsType<0 == I>{}, pointers[I])[i];
     }
 
     template <size_t MA, typename... Ts>
-    friend std::ostream &operator<<(std::ostream &,
-                                    const StructureOfArrays<MA, Ts...> &);
+    friend std::ostream &operator<<(std::ostream &, const AoSoa<MA, Ts...> &);
 
   private:
     template <size_t>
-    [[nodiscard]] static Array<void *, NUM_MEMBERS>
-    setPointers(void *ptr, Array<void *, NUM_MEMBERS> pointers, size_t &&space,
+    [[nodiscard]] static Array<void *, NUM_POINTERS>
+    setPointers(void *ptr, Array<void *, NUM_POINTERS> pointers, size_t &&space,
                 size_t) {
         // Align the end of last pointer to the getAlignment() byte boundary so
         // the memory requirement is a multiple of getAlignment()
@@ -292,8 +311,8 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
     }
 
     template <size_t I, typename T, typename... Types>
-    [[nodiscard]] static Array<void *, NUM_MEMBERS>
-    setPointers(void *ptr, Array<void *, NUM_MEMBERS> pointers, size_t &&space,
+    [[nodiscard]] static Array<void *, NUM_POINTERS>
+    setPointers(void *ptr, Array<void *, NUM_POINTERS> pointers, size_t &&space,
                 size_t num_elements) {
         constexpr size_t size_of_type = sizeof(T);
         if (ptr) {
@@ -307,57 +326,60 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
                     ptr, pointers, std::move(space), num_elements);
             }
 
-            return Array<void *, NUM_MEMBERS>{};
+            return Array<void *, NUM_POINTERS>{};
         }
 
-        return Array<void *, NUM_MEMBERS>{};
+        return Array<void *, NUM_POINTERS>{};
     }
 
     template <size_t, size_t, typename T, typename...>
-    [[nodiscard]] constexpr static auto getPointer(BoolAsType<true>,
-                                                   void *const ptr) {
+    HOST DEVICE [[nodiscard]] constexpr static auto
+    getPointer(BoolAsType<true>, void *const ptr) {
         return static_cast<T *>(ptr);
     }
 
     template <size_t I, size_t N, typename T, typename... Types>
-    [[nodiscard]] constexpr static auto getPointer(BoolAsType<false>,
-                                                   void *const ptr) {
+    HOST DEVICE [[nodiscard]] constexpr static auto
+    getPointer(BoolAsType<false>, void *const ptr) {
         constexpr size_t NEXT = I + 1;
         return getPointer<NEXT, N, Types...>(BoolAsType<NEXT == N>{}, ptr);
     }
 
-    template <size_t, size_t>
-    [[nodiscard]] constexpr static auto toAos(void *const[], size_t) {
+    template <typename TupleType, size_t, size_t>
+    HOST DEVICE [[nodiscard]] constexpr static auto toTuple(void *const[],
+                                                            size_t) {
         return Tuple<>{};
     }
+    template <typename TupleType, size_t I, size_t N, typename T,
+              typename... Types>
+    HOST DEVICE [[nodiscard]] constexpr static auto
+    toTuple(void *const pointers[], size_t i) {
+        T *head = static_cast<T *>(pointers[I]) + i;
+        auto tail = toTuple<TupleType, I + 1, N, Types...>(pointers, i);
 
-    template <size_t I, size_t N, typename T, typename... Types>
-    [[nodiscard]] constexpr static auto toAos(void *const pointers[],
-                                              size_t i) {
-        return Tuple<T, Types...>(static_cast<T *>(pointers[I])[i],
-                                  toAos<I + 1, N, Types...>(pointers, i));
+        if constexpr (IsSame<TupleType, Aos>::value) {
+            return Tuple<T, Types...>(*head, tail);
+        } else {
+            return Tuple<T *, Types *...>(head, tail);
+        }
     }
 
-    template <size_t, size_t>
-    [[nodiscard]] constexpr static auto toSoa(void *const[], size_t) {
-        return Tuple<>{};
-    }
+    template <typename TupleType, size_t, size_t>
+    HOST DEVICE constexpr static void fromTuple(void *const[], size_t,
+                                                const Tuple<> &) {}
 
-    template <size_t I, size_t N, typename T, typename... Types>
-    [[nodiscard]] constexpr static auto toSoa(void *const pointers[],
-                                              size_t i) {
-        return Tuple<T *, Types *...>(&static_cast<T *>(pointers[I])[i],
-                                      toSoa<I + 1, N, Types...>(pointers, i));
-    }
+    template <typename TupleType, size_t I, size_t N, typename T,
+              typename... Types>
+    HOST DEVICE constexpr static void
+    fromTuple(void *const pointers[], size_t i,
+              const Tuple<T, Types...> &tuple) {
+        if constexpr (IsSame<TupleType, Aos>::value) {
+            static_cast<T *>(pointers[I])[i] = tuple.head;
+        } else {
+            static_cast<T *>(pointers[I])[i] = *tuple.head;
+        }
 
-    template <size_t, size_t>
-    constexpr static void fromAos(void *const[], size_t, const Tuple<> &) {}
-
-    template <size_t I, size_t N, typename T, typename... Types>
-    constexpr static void fromAos(void *const pointers[], size_t i,
-                                  const Tuple<T, Types...> &tuple) {
-        static_cast<T *>(pointers[I])[i] = tuple.head;
-        fromAos<I + 1, N>(pointers, i, tuple.tail);
+        fromTuple<TupleType, I + 1, N>(pointers, i, tuple.tail);
     }
 
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
@@ -368,11 +390,12 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
         return n & (getAlignment() - 1);
     }
 
-    // TODO: Does not work
-    template <> constexpr static size_t maxAlign() { return 0ul; }
-
     template <typename T, typename... Ts> constexpr static size_t maxAlign() {
-        return std::max(alignof(T), maxAlign<Ts...>());
+        if constexpr (sizeof...(Ts) == 0) {
+            return alignof(T);
+        } else {
+            return std::max(alignof(T), maxAlign<Ts...>());
+        }
     }
 
     [[nodiscard]] constexpr static size_t getAlignment() {
@@ -392,14 +415,16 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
 
     // Find the N for which UIDS[N] == UID
     template <size_t UID, size_t N>
-    [[nodiscard]] constexpr static size_t linearIndex(BoolAsType<false>) {
+    HOST DEVICE [[nodiscard]] constexpr static size_t
+    linearIndex(BoolAsType<false>) {
         constexpr size_t NEXT = N + 1;
         constexpr bool EQ = UID == UIDS[NEXT];
-        return StructureOfArrays::linearIndex<UID, NEXT>(BoolAsType<EQ>{});
+        return AoSoa::linearIndex<UID, NEXT>(BoolAsType<EQ>{});
     }
 
     template <size_t, size_t N>
-    [[nodiscard]] constexpr static size_t linearIndex(BoolAsType<true>) {
+    HOST DEVICE [[nodiscard]] constexpr static size_t
+    linearIndex(BoolAsType<true>) {
         return N;
     }
 
@@ -415,7 +440,10 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
             if constexpr (J < N) {
                 static_assert(
                     ClashingIds<I, J>::value,
-                    "Two types with indices I and J have the same unique ID");
+                    "Two types with indices I and J have the same unique ID. "
+                    "This means they either have the same name, or they have "
+                    "unique names but the names hash to the same number. In "
+                    "any case, you should change the name of one of them.");
 
                 assertUniqueIds<I, J + 1, N>();
             } else {
@@ -426,31 +454,30 @@ template <size_t MIN_ALIGN, typename... Pairs> struct StructureOfArrays {
         return true;
     }
 
-    static_assert(assertUniqueIds<0, 1, NUM_MEMBERS>());
+    static_assert(assertUniqueIds<0, 1, NUM_POINTERS>());
 };
 
 template <size_t A, typename... Pairs>
-std::ostream &operator<<(std::ostream &os,
-                         const StructureOfArrays<A, Pairs...> &soa) {
-    typedef StructureOfArrays<A, Pairs...> Soa;
-    constexpr size_t n = Soa::NUM_MEMBERS;
+std::ostream &operator<<(std::ostream &os, const AoSoa<A, Pairs...> &aosoa) {
+    typedef AoSoa<A, Pairs...> AoSoa;
+    constexpr size_t n = AoSoa::NUM_POINTERS;
 
-    os << "StructureOfArrays {\n  ";
+    os << "AoSoa {\n  ";
     os << "num members: " << n << "\n  ";
-    os << "num elements: " << soa.num_elements << "\n  ";
-    os << "memory requirement (bytes): " << Soa::getMemReq(soa.num_elements)
+    os << "num elements: " << aosoa.num_elements << "\n  ";
+    os << "memory requirement (bytes): " << AoSoa::getMemReq(aosoa.num_elements)
        << "\n  ";
-    os << "*data: " << soa.data << "\n  ";
+    os << "*data: " << aosoa.data << "\n  ";
     os << "*pointers[]: " << '{';
     for (size_t i = 0; i < n - 1; i++) {
-        os << soa.pointers[i] << ", ";
+        os << aosoa.pointers[i] << ", ";
     }
-    os << soa.pointers[n - 1] << "}\n  ";
+    os << aosoa.pointers[n - 1] << "}\n  ";
     os << "member uids: " << '{';
     for (size_t i = 0; i < n - 1; i++) {
-        os << Soa::UIDS[i] << ", ";
+        os << AoSoa::UIDS[i] << ", ";
     }
-    os << Soa::UIDS[n - 1] << "}\n";
+    os << AoSoa::UIDS[n - 1] << "}\n";
     os << "}\n";
 
     return os;

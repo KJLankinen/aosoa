@@ -1,31 +1,25 @@
 #include "aosoa.h"
-#include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <functional>
 #include <iostream>
-#include <string>
-#include <string_view>
+#include <vector>
 
 void soa() {
     using aosoa::operator""_idx;
 
-    typedef aosoa::StructureOfArrays<
-        aosoa::IndexTypePair<"is_visible"_idx, bool>,
-        aosoa::IndexTypePair<"radius"_idx, float>,
-        aosoa::IndexTypePair<"radius2"_idx, double>,
-        aosoa::IndexTypePair<"num_hits"_idx, int>>
+    typedef aosoa::AoSoa<128, aosoa::IndexTypePair<"is_visible"_idx, bool>,
+                         aosoa::IndexTypePair<"radius"_idx, float>,
+                         aosoa::IndexTypePair<"radius2"_idx, double>,
+                         aosoa::IndexTypePair<"num_hits"_idx, int>>
         Thingie;
 
     const size_t n = 5;
     const size_t mem_req = Thingie::getMemReq(n);
     std::cout << "mem req: " << mem_req << std::endl;
 
-    Thingie thingie(n);
     std::vector<uint8_t> memory(mem_req);
-    bool success = thingie.init(memory.data());
-    std::cout << "success : " << success << std::endl;
+    Thingie thingie(n, memory.data());
 
     auto is_visible = thingie.get<"is_visible"_idx>();
     auto radii = thingie.get<"radius"_idx>();
@@ -55,13 +49,13 @@ void soa() {
     std::cout << thingie << soa2 << std::endl;
 
     for (size_t i = 0; i < n; i++) {
-        std::cout << soa2.get(i) << std::endl;
+        std::cout << soa2.get<Thingie::Aos>(i) << std::endl;
     }
 
     thingie.set(2, Thingie::Aos(true, 1337.0f, 1337.0, -12));
-    std::cout << soa2.get(2) << std::endl;
+    std::cout << soa2.get<Thingie::Aos>(2) << std::endl;
 
-    Thingie::Soa soa = thingie.getSoa(0);
+    auto soa = thingie.get<Thingie::Soa>(0);
     bool *bptr = soa.get<0>();
     for (size_t i = 0; i < n; i++) {
         std::cout << *(bptr++) << std::endl;
