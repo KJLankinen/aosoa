@@ -2,7 +2,7 @@
 
 OUT_BIN=aosoa_tests
 
-g++ main.cpp \
+g++ tests.cpp \
     -o $OUT_BIN \
     --std=c++17 \
     -Wall \
