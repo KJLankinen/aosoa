@@ -230,7 +230,7 @@ template <size_t MIN_ALIGN, typename... Pairs> struct AoSoa {
         alignas(getAlignment()) uint8_t dummy = 0;
         constexpr size_t n = ~size_t(0);
         size_t space = n;
-        const auto pointers =
+        [[maybe_unused]] const auto pointers =
             setPointers<0, typename PairTraits<Pairs>::Type...>(
                 static_cast<void *>(&dummy), Array<void *, NUM_POINTERS>{},
                 std::move(space), num_elements);
@@ -243,8 +243,6 @@ template <size_t MIN_ALIGN, typename... Pairs> struct AoSoa {
                getAlignment();
     }
 
-    // Swap pointers for two UIDS. Note that this will obviously be very unsafe
-    // garbage if the two UIDS don't share a type.
     template <size_t UID1, size_t UID2> constexpr void swap() const {
         std::swap(get<UID1>(), get<UID2>());
     }
@@ -286,12 +284,6 @@ template <size_t MIN_ALIGN, typename... Pairs> struct AoSoa {
     // Set by a tuple
     template <typename T> HOST DEVICE constexpr void set(size_t i, const T &t) {
         fromTuple<T, 0, NUM_POINTERS>(pointers.data, i, t);
-    }
-
-    template <size_t I>
-    [[nodiscard]] HOST DEVICE constexpr auto &operator[](size_t i) {
-        return getPointer<0, I, typename PairTraits<Pairs>::Type...>(
-            BoolAsType<0 == I>{}, pointers[I])[i];
     }
 
     template <size_t MA, typename... Ts>

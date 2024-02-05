@@ -1,4 +1,4 @@
-#include "aosoa.h"
+#include "../aosoa.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -38,10 +38,9 @@ void soa() {
               << thingie.get<"radius"_idx>(n / 2 - 1) << " "
               << thingie.get<"radius"_idx>(n / 2) << std::endl;
 
-    thingie.operator[]<2>(10) = 1337.0;
-    thingie.set<"radius"_idx>(10, 1338.0f);
-    std::cout << thingie.get<"radius2"_idx>(10) << " "
-              << thingie.get<"radius"_idx>(10) << std::endl;
+    thingie.set<"radius"_idx>(4, 1338.0f);
+    std::cout << thingie.get<"radius2"_idx>(4) << " "
+              << thingie.get<"radius"_idx>(4) << std::endl;
 
     Thingie soa2;
     std::memcpy(static_cast<void *>(&soa2), static_cast<void *>(&thingie),
@@ -62,6 +61,51 @@ void soa() {
     }
 }
 
+namespace {
+// Definitions for a simple testing harness
+struct TestResult {
+    bool success;
+    std::string output;
+};
+
+typedef TestResult (*Fn)();
+struct Test {
+    const char *test_name;
+    Fn fn;
+};
+
+#define TEST(test)                                                             \
+    Test { #test, test }
+
+#define OK()                                                                   \
+    TestResult { true, "" }
+#define ERR(output)                                                            \
+    TestResult { false, output }
+} // namespace
+
+// Hash:
+// hashing
+// clashing
+// crc
+// Tuple:
+// Test all constructors
+// Test getting with constructor
+// Test setting, then getting
+// AoSoa
+// Test all constructors
+// Test getMemReq() with multiple template arguments
+// Test swap
+// Test all gets
+// Test all sets
+const static Test tests[]{
+    {"First", []() -> TestResult { return OK(); }},
+    {"Second", []() -> TestResult { return ERR("I fail a lot"); }},
+};
+
 void test() {
-    soa();
+    for (auto [test_name, test] : tests) {
+        const auto [success, output] = test();
+        printf("%s %s\n", test_name,
+               success ? "OK  " : ("FAIL \"" + output + "\"").c_str());
+    }
 }
