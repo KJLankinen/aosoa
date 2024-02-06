@@ -213,7 +213,7 @@ template <size_t MIN_ALIGN, typename... Pairs> struct AoSoa {
 
     const size_t num_elements = 0;
     void *const data = nullptr;
-    const Array<void *, NUM_POINTERS> pointers;
+    Array<void *, NUM_POINTERS> pointers;
 
   public:
     typedef Tuple<typename PairTraits<Pairs>::Type...> Aos;
@@ -244,8 +244,23 @@ template <size_t MIN_ALIGN, typename... Pairs> struct AoSoa {
                getAlignment();
     }
 
-    template <size_t UID1, size_t UID2> constexpr void swap() const {
-        std::swap(get<UID1>(), get<UID2>());
+    template <size_t UID1, size_t UID2> void swap() {
+        constexpr size_t N1 =
+            AoSoa::linearIndex<UID1, 0>(BoolAsType<UID1 == UIDS[0]>{});
+        auto ptr1 = getPointer<0, N1, typename PairTraits<Pairs>::Type...>(
+            BoolAsType<0 == N1>{}, pointers[N1]);
+
+        constexpr size_t N2 =
+            AoSoa::linearIndex<UID2, 0>(BoolAsType<UID2 == UIDS[0]>{});
+        auto ptr2 = getPointer<0, N2, typename PairTraits<Pairs>::Type...>(
+            BoolAsType<0 == N2>{}, pointers[N2]);
+
+        if constexpr (IsSame<decltype(ptr1), decltype(ptr2)>::value) {
+            std::swap(pointers[N1], pointers[N2]);
+        } else {
+            static_assert(IsSame<decltype(ptr1), decltype(ptr2)>::value,
+                          "Pointers must have the same type to be swapped");
+        }
     }
 
     // Return a pointer for UID
