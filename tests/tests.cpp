@@ -367,6 +367,85 @@ constexpr static Test tests[]{
              bytes_at_end == alignment - bytes_at_begin,
              "Bytes at the end should be alignment - bytes at the beginning");
      }},
+    {"AoSoa_construction2",
+     [](Result &result) {
+         constexpr size_t alignment = 1;
+         constexpr size_t n = 1000;
+         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
+                       IndexTypePair<"second"_idx, char>,
+                       IndexTypePair<"third"_idx, int>,
+                       IndexTypePair<"fourth"_idx, bool>,
+                       IndexTypePair<"fifth"_idx, float>>
+             Aosoa;
+
+         const size_t mem_req = Aosoa::getMemReq(n);
+         ASSERT(mem_req == 18008, "Memory requirement incorrect");
+         std::vector<uint8_t> bytes(mem_req);
+         const Aosoa a(n, static_cast<void *>(bytes.data()));
+
+         const std::array<uintptr_t, 5> pointers = {
+             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"third"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"fourth"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"fifth"_idx>()),
+         };
+
+         for (auto pointer : pointers) {
+             ASSERT((pointer & (alignment - 1)) == 0,
+                    "Pointer is not aligned correctly");
+         }
+
+         constexpr std::array<uintptr_t, 4> sizes = {
+             8000,
+             1000,
+             4000,
+             1000,
+         };
+
+         for (size_t i = 0; i < pointers.size() - 1; i++) {
+             ASSERT(pointers[i + 1] - pointers[i] == sizes[i], "Size wrong");
+         }
+
+         const uintptr_t begin = reinterpret_cast<uintptr_t>(bytes.data());
+         const uintptr_t bytes_at_end = mem_req + begin - pointers[4] - 4000;
+         const uintptr_t bytes_at_begin = pointers[0] - begin;
+         ASSERT(
+             bytes_at_end == alignof(double) - bytes_at_begin,
+             "Bytes at the end should be alignment - bytes at the beginning");
+     }},
+    {"AoSoa_swap",
+     [](Result &result) {
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
+                       IndexTypePair<"second"_idx, double>,
+                       IndexTypePair<"third"_idx, int>,
+                       IndexTypePair<"fourth"_idx, bool>,
+                       IndexTypePair<"fifth"_idx, float>>
+             Aosoa;
+
+         const size_t mem_req = Aosoa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Aosoa a(n, static_cast<void *>(bytes.data()));
+
+         const std::array<uintptr_t, 2> original_pointers = {
+             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
+         };
+
+         a.swap<"first"_idx, "second"_idx>();
+
+         const std::array<uintptr_t, 2> pointers = {
+             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
+         };
+
+         ASSERT(original_pointers[0] == pointers[1],
+                "Pointers not swapped correctly 1");
+         ASSERT(original_pointers[1] == pointers[0],
+                "Pointers not swapped correctly 2");
+     }},
 };
 
 int main(int, char **) {
