@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if [ $# -eq 0 ] || [ ! -d "$1" ]
+then
+    echo "Give the base directory of the project"
+    exit 1
+fi
+
+base_dir=$1
+
+out_bin=aosoa_tests
+
+g++ $base_dir/tests/tests.cpp \
+    -o $out_bin \
+    --std=c++17 \
+    -Wall \
+    -Werror \
+    -Wextra \
+    -Wshadow \
+    -Wsign-conversion \
+    -Wconversion \
+    -O2 \
+    && ./$out_bin
+
+rm -rf $out_bin \
