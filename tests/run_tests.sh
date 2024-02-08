@@ -12,7 +12,7 @@ out_bin=aosoa_tests
 
 g++ $base_dir/tests/tests.cpp \
     -o $out_bin \
-    --std=c++17 \
+    --std=c++20 \
     -Wall \
     -Werror \
     -Wextra \
