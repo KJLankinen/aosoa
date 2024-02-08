@@ -164,15 +164,38 @@ struct IndexOfString {
   public:
     constexpr static size_t i = index<0, Strings...>();
 };
+
+template <size_t, size_t, CompileTimeString CTS1, CompileTimeString CTS2>
+struct UniqueStrings {
+    constexpr static bool value = CTS1 != CTS2;
+};
+
+template <size_t, size_t, CompileTimeString>
+consteval static void assertUnique() {}
+
+template <size_t I, size_t J, CompileTimeString MatchStr,
+          CompileTimeString Head, CompileTimeString... Tail>
+consteval static void assertUnique() {
+    static_assert(UniqueStrings<I, J, MatchStr, Head>::value,
+                  "A name clash for two variables with indices I, J. Use "
+                  "unique names.");
+    assertUnique<I, J + 1, MatchStr, Tail...>();
+}
+
+template <size_t> consteval static bool assertUniqueNames() { return true; }
+template <size_t I, CompileTimeString Head, CompileTimeString... Tail>
+consteval static bool assertUniqueNames() {
+    assertUnique<I, I + 1, Head, Tail...>();
+    assertUniqueNames<I + 1, Tail...>();
+
+    return true;
+}
 } // namespace
 
 namespace aosoa {
-// This type is used as both the Array of Structures (Aos) type of values, as
-// well as the Structure of Arrays (Soa) type of pointers to values for the
-// AoSoa template type
-template <typename... Types> struct Tuple;
-template <> struct Tuple<> {
-    constexpr bool operator==(const Tuple<> &) const { return true; }
+template <typename... Vars> struct Aos;
+template <> struct Aos<> {
+    constexpr bool operator==(const Aos<> &) const { return true; }
     template <CompileTimeString>
     HOST DEVICE [[nodiscard]] constexpr auto get() = delete;
     template <CompileTimeString, typename U>
@@ -181,25 +204,25 @@ template <> struct Tuple<> {
   private:
     std::ostream &output(std::ostream &os) const { return os; }
 };
-template <typename T, typename... Types> struct Tuple<T, Types...> {
+template <typename Var, typename... Vars> struct Aos<Var, Vars...> {
     // All instantiations are friends with each other
-    template <typename... Ts> friend struct Tuple;
+    template <typename... Ts> friend struct Aos;
 
     // The concrete type U given to Variable<U, CTS>
-    using Type = PairTraits<T>::Type;
-    static constexpr auto name = PairTraits<T>::name;
+    using Type = PairTraits<Var>::Type;
+    static constexpr auto name = PairTraits<Var>::name;
 
+  private:
     Type head = {};
-    Tuple<Types...> tail = {};
+    Aos<Vars...> tail = {};
 
-    HOST DEVICE constexpr Tuple() {}
-    HOST DEVICE constexpr Tuple(const Tuple<T, Types...> &tuple)
-        : head(tuple.head), tail(tuple.tail) {}
-    HOST DEVICE constexpr Tuple(Type t, Tuple<Types...> tuple)
-        : head(t), tail(tuple) {}
+  public:
+    HOST DEVICE constexpr Aos() {}
+    HOST DEVICE constexpr Aos(const Aos<Var, Vars...> &aos)
+        : head(aos.head), tail(aos.tail) {}
+    HOST DEVICE constexpr Aos(Type t, Aos<Vars...> aos) : head(t), tail(aos) {}
     template <typename... Args>
-    HOST DEVICE constexpr Tuple(Type t, Args... args)
-        : head(t), tail(args...) {}
+    HOST DEVICE constexpr Aos(Type t, Args... args) : head(t), tail(args...) {}
 
     template <CompileTimeString CTS>
     HOST DEVICE [[nodiscard]] constexpr auto get() const {
@@ -220,41 +243,40 @@ template <typename T, typename... Types> struct Tuple<T, Types...> {
     }
 
     template <typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const Tuple<Ts...> &);
-    bool operator==(const Tuple<T, Types...> &rhs) const {
+    friend std::ostream &operator<<(std::ostream &, const Aos<Ts...> &);
+    bool operator==(const Aos<Var, Vars...> &rhs) const {
         return head == rhs.head && tail == rhs.tail;
     }
 
   private:
     std::ostream &output(std::ostream &os) const {
-        if constexpr (sizeof...(Types) == 0) {
-            os << head;
-        } else if constexpr (sizeof...(Types) > 0) {
-            os << head << ", ";
+        os << PairTraits<Var>::name.str << ": " << head;
+        if constexpr (sizeof...(Vars) > 0) {
+            os << "\n  ";
             return tail.output(os);
         }
 
         return os;
     }
+
+    static_assert(assertUniqueNames<0, PairTraits<Vars>::name...>());
 };
 
-template <typename... Types>
-std::ostream &operator<<(std::ostream &os, const Tuple<Types...> &tuple) {
-    os << "Tuple(";
-    return tuple.output(os) << ")";
+template <typename... Vars>
+std::ostream &operator<<(std::ostream &os, const Aos<Vars...> &aos) {
+    os << "Aos {\n  ";
+    return aos.output(os) << "\n}";
 }
 
 template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
   private:
     static constexpr size_t NUM_POINTERS = sizeof...(Variables);
-
     const size_t num_elements = 0;
     void *const data = nullptr;
     Array<void *, NUM_POINTERS> pointers;
 
   public:
-    typedef Tuple<Variables...> Aos;
-
+    using Aos = aosoa::Aos<Variables...>;
     HOST DEVICE constexpr AoSoa() {}
     AoSoa(size_t n, void *ptr)
         : num_elements(n), data(ptr),
@@ -295,7 +317,6 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         std::swap(pointers[i], pointers[j]);
     }
 
-    // Return a pointer for CTS
     template <CompileTimeString CTS>
     HOST DEVICE [[nodiscard]] constexpr auto get() const {
         constexpr size_t i =
@@ -306,33 +327,29 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         return static_cast<Type *>(pointers[i]);
     }
 
-    // Return an element at index I of pointer UID
     template <CompileTimeString CTS, size_t I>
     HOST DEVICE [[nodiscard]] constexpr auto get() const {
         return get<CTS>()[I];
     }
 
-    // Return an element at index i of pointer UID
     template <CompileTimeString CTS>
     HOST DEVICE [[nodiscard]] constexpr auto get(size_t i) const {
         return get<CTS>()[i];
     }
 
-    // Return a tuple
-    template <typename T>
-    HOST DEVICE [[nodiscard]] constexpr T get(size_t i) const {
-        return toTuple<T, 0, NUM_POINTERS, Variables...>(pointers.items, i);
+    HOST DEVICE [[nodiscard]] constexpr Aos get(size_t i) const {
+        Aos aos{};
+        toAos<Variables...>(i, aos);
+        return aos;
     }
 
-    // Set a single value
     template <CompileTimeString CTS, typename T>
-    HOST DEVICE constexpr void set(size_t i, T value) {
+    HOST DEVICE constexpr void set(size_t i, T value) const {
         get<CTS>()[i] = value;
     }
 
-    // Set by a tuple
-    template <typename T> HOST DEVICE constexpr void set(size_t i, const T &t) {
-        fromTuple<T, 0, NUM_POINTERS>(pointers.items, i, t);
+    HOST DEVICE constexpr void set(size_t i, const Aos &t) const {
+        fromAos<Variables...>(i, t);
     }
 
     template <size_t MA, typename... Ts>
@@ -404,65 +421,22 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         return Array<void *, NUM_POINTERS>{};
     }
 
-    template <typename TupleType, size_t, size_t>
-    HOST DEVICE [[nodiscard]] constexpr static auto toTuple(void *const[],
-                                                            size_t) {
-        return Tuple<>{};
-    }
-    template <typename TupleType, size_t I, size_t N, typename Var,
-              typename... Vars>
-    HOST DEVICE [[nodiscard]] constexpr static auto
-    toTuple(void *const pointers[], size_t i) {
-        using Type = PairTraits<Var>::Type;
-        Type *head = static_cast<Type *>(pointers[I]) + i;
-        auto tail = toTuple<TupleType, I + 1, N, Vars...>(pointers, i);
-
-        if constexpr (IsSame<TupleType, Aos>::value) {
-            return Tuple<Var, Vars...>(*head, tail);
+    template <typename Head, typename... Tail>
+    HOST DEVICE constexpr void toAos(size_t i, Aos &aos) const {
+        using H = PairTraits<Head>;
+        aos.template set<H::name, typename H::Type>(get<H::name>(i));
+        if constexpr (sizeof...(Tail)) {
+            toAos<Tail...>(i, aos);
         }
     }
 
-    template <typename TupleType, size_t, size_t>
-    HOST DEVICE constexpr static void fromTuple(void *const[], size_t,
-                                                const Tuple<> &) {}
-
-    template <typename TupleType, size_t I, size_t N, typename Var,
-              typename... Vars>
-    HOST DEVICE constexpr static void
-    fromTuple(void *const pointers[], size_t i,
-              const Tuple<Var, Vars...> &tuple) {
-        if constexpr (IsSame<TupleType, Aos>::value) {
-            static_cast<PairTraits<Var>::Type *>(pointers[I])[i] = tuple.head;
+    template <typename Head, typename... Tail>
+    HOST DEVICE constexpr void fromAos(size_t i, const Aos &aos) const {
+        using H = PairTraits<Head>;
+        set<H::name, typename H::Type>(i, aos.template get<H::name>());
+        if constexpr (sizeof...(Tail) > 0) {
+            fromAos<Tail...>(i, aos);
         }
-
-        fromTuple<TupleType, I + 1, N>(pointers, i, tuple.tail);
-    }
-
-    // Statically assert that all compile time strings are unique
-    template <size_t, size_t, CompileTimeString CTS1, CompileTimeString CTS2>
-    struct UniqueStrings {
-        constexpr static bool value = CTS1 != CTS2;
-    };
-
-    template <size_t, size_t, CompileTimeString>
-    consteval static void assertUnique() {}
-
-    template <size_t I, size_t J, CompileTimeString MatchStr,
-              CompileTimeString Head, CompileTimeString... Tail>
-    consteval static void assertUnique() {
-        static_assert(UniqueStrings<I, J, MatchStr, Head>::value,
-                      "A name clash for two variables with indices I, J. Use "
-                      "unique names.");
-        assertUnique<I, J + 1, MatchStr, Tail...>();
-    }
-
-    template <size_t> consteval static bool assertUniqueNames() { return true; }
-    template <size_t I, CompileTimeString Head, CompileTimeString... Tail>
-    consteval static bool assertUniqueNames() {
-        assertUnique<I, I + 1, Head, Tail...>();
-        assertUniqueNames<I + 1, Tail...>();
-
-        return true;
     }
 
     static_assert(assertUniqueNames<0, PairTraits<Variables>::name...>());
@@ -471,7 +445,6 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
 template <size_t A, typename... Variables>
 std::ostream &operator<<(std::ostream &os,
                          const AoSoa<A, Variables...> &aosoa) {
-    // TODO: add print of names
     typedef AoSoa<A, Variables...> AoSoa;
     constexpr size_t n = AoSoa::NUM_POINTERS;
 
@@ -481,11 +454,11 @@ std::ostream &operator<<(std::ostream &os,
     os << "memory requirement (bytes): " << AoSoa::getMemReq(aosoa.num_elements)
        << "\n  ";
     os << "*data: " << aosoa.data << "\n  ";
-    os << "*pointers[]: " << '{';
+    os << "*pointers[]: {\n    ";
     for (size_t i = 0; i < n - 1; i++) {
-        os << aosoa.pointers[i] << ", ";
+        os << aosoa.pointers[i] << "\n    ";
     }
-    os << aosoa.pointers[n - 1] << "}\n";
+    os << aosoa.pointers[n - 1] << "\n  }\n}";
 
     return os;
 }

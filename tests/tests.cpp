@@ -49,17 +49,11 @@ void soa() {
     std::cout << thingie << soa2 << std::endl;
 
     for (size_t i = 0; i < n; i++) {
-        std::cout << soa2.get<Thingie::Aos>(i) << std::endl;
+        std::cout << soa2.get(i) << std::endl;
     }
 
     thingie.set(2, Thingie::Aos(true, 1337.0f, 1337.0, -12));
-    std::cout << soa2.get<Thingie::Aos>(2) << std::endl;
-
-    // auto soa = thingie.get<Thingie::Soa>(0);
-    // bool *bptr = soa.get<0>();
-    // for (size_t i = 0; i < n; i++) {
-    //     std::cout << *(bptr++) << std::endl;
-    // }
+    std::cout << soa2.get(2) << std::endl;
 }
 
 namespace {
