@@ -46,7 +46,7 @@ void soa() {
     Thingie soa2;
     std::memcpy(static_cast<void *>(&soa2), static_cast<void *>(&thingie),
                 sizeof(Thingie));
-    std::cout << thingie << soa2 << std::endl;
+    std::cout << thingie << "\n" << soa2 << std::endl;
 
     for (size_t i = 0; i < n; i++) {
         std::cout << soa2.get(i) << std::endl;
@@ -349,4 +349,5 @@ int main(int, char **) {
         printf("%s %s%s\n", result.success ? "OK  " : "FAIL", test_name,
                result.success ? "" : (" \"" + result.msg + "\"").c_str());
     }
+    soa();
 }

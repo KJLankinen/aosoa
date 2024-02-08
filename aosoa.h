@@ -308,12 +308,13 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
             IndexOfString<CTS1, PairTraits<Variables>::name...>::i;
         constexpr size_t j =
             IndexOfString<CTS2, PairTraits<Variables>::name...>::i;
-        static_assert(
-            IsSame<typename NthType<
-                       i, typename PairTraits<Variables>::Type...>::Type,
-                   typename NthType<j, typename PairTraits<
-                                           Variables>::Type...>::Type>::value,
-            "Mismatched types for swap");
+        using TypeI =
+            typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
+        using TypeJ =
+            typename NthType<j, typename PairTraits<Variables>::Type...>::Type;
+
+        static_assert(IsSame<TypeI, TypeJ>::value, "Mismatched types for swap");
+
         std::swap(pointers[i], pointers[j]);
     }
 
@@ -442,23 +443,38 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
     static_assert(assertUniqueNames<0, PairTraits<Variables>::name...>());
 };
 
+template <size_t N, size_t I, typename Head, typename... Tail>
+std::ostream &outputPointers(std::ostream &os,
+                             const Array<void *, N> &pointers) {
+    using H = PairTraits<Head>;
+    os << typeid(typename H::Type).name() << "* " << H::name.str << ": "
+       << pointers[I];
+
+    if constexpr (sizeof...(Tail) == 0) {
+        os << "\n  }";
+        return os;
+    } else {
+        os << "\n    ";
+
+        return outputPointers<N, I + 1, Tail...>(os, pointers);
+    }
+}
+
 template <size_t A, typename... Variables>
 std::ostream &operator<<(std::ostream &os,
                          const AoSoa<A, Variables...> &aosoa) {
     typedef AoSoa<A, Variables...> AoSoa;
-    constexpr size_t n = AoSoa::NUM_POINTERS;
+    constexpr size_t N = AoSoa::NUM_POINTERS;
 
     os << "AoSoa {\n  ";
-    os << "num members: " << n << "\n  ";
+    os << "num members: " << N << "\n  ";
     os << "num elements: " << aosoa.num_elements << "\n  ";
     os << "memory requirement (bytes): " << AoSoa::getMemReq(aosoa.num_elements)
        << "\n  ";
     os << "*data: " << aosoa.data << "\n  ";
     os << "*pointers[]: {\n    ";
-    for (size_t i = 0; i < n - 1; i++) {
-        os << aosoa.pointers[i] << "\n    ";
-    }
-    os << aosoa.pointers[n - 1] << "\n  }\n}";
+    outputPointers<N, 0, Variables...>(os, aosoa.pointers);
+    os << "\n}";
 
     return os;
 }
