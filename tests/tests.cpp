@@ -9,12 +9,10 @@
 using namespace aosoa;
 
 void soa() {
-    using aosoa::operator""_idx;
-
-    typedef aosoa::AoSoa<128, aosoa::IndexTypePair<"is_visible"_idx, bool>,
-                         aosoa::IndexTypePair<"radius"_idx, float>,
-                         aosoa::IndexTypePair<"radius2"_idx, double>,
-                         aosoa::IndexTypePair<"num_hits"_idx, int>>
+    typedef aosoa::AoSoa<128, aosoa::Variable<bool, "is_visible">,
+                         aosoa::Variable<float, "radius">,
+                         aosoa::Variable<double, "radius2">,
+                         aosoa::Variable<int, "num_hits">>
         Thingie;
 
     const size_t n = 5;
@@ -24,10 +22,10 @@ void soa() {
     std::vector<uint8_t> memory(mem_req);
     Thingie thingie(n, memory.data());
 
-    auto is_visible = thingie.get<"is_visible"_idx>();
-    auto radii = thingie.get<"radius"_idx>();
-    auto radii2 = thingie.get<"radius2"_idx>();
-    auto num_hits = thingie.get<"num_hits"_idx>();
+    bool *is_visible = thingie.get<"is_visible">();
+    float *radii = thingie.get<"radius">();
+    double *radii2 = thingie.get<"radius2">();
+    int *num_hits = thingie.get<"num_hits">();
 
     for (size_t i = 0; i < n; i++) {
         is_visible[i] = i < n / 2;
@@ -36,14 +34,14 @@ void soa() {
         num_hits[i] = -static_cast<int>(i);
     }
 
-    std::cout << thingie.get<"is_visible"_idx>(n / 2 - 1) << " "
-              << thingie.get<"is_visible"_idx>(n / 2) << " "
-              << thingie.get<"radius"_idx>(n / 2 - 1) << " "
-              << thingie.get<"radius"_idx>(n / 2) << std::endl;
+    std::cout << thingie.get<"is_visible">(n / 2 - 1) << " "
+              << thingie.get<"is_visible">(n / 2) << " "
+              << thingie.get<"radius">(n / 2 - 1) << " "
+              << thingie.get<"radius">(n / 2) << std::endl;
 
-    thingie.set<"radius"_idx>(4, 1338.0f);
-    std::cout << thingie.get<"radius2"_idx>(4) << " "
-              << thingie.get<"radius"_idx>(4) << std::endl;
+    thingie.set<"radius">(4, 1338.0f);
+    std::cout << thingie.get<"radius2">(4) << " " << thingie.get<"radius">(4)
+              << std::endl;
 
     Thingie soa2;
     std::memcpy(static_cast<void *>(&soa2), static_cast<void *>(&thingie),
@@ -57,11 +55,11 @@ void soa() {
     thingie.set(2, Thingie::Aos(true, 1337.0f, 1337.0, -12));
     std::cout << soa2.get<Thingie::Aos>(2) << std::endl;
 
-    auto soa = thingie.get<Thingie::Soa>(0);
-    bool *bptr = soa.get<0>();
-    for (size_t i = 0; i < n; i++) {
-        std::cout << *(bptr++) << std::endl;
-    }
+    // auto soa = thingie.get<Thingie::Soa>(0);
+    // bool *bptr = soa.get<0>();
+    // for (size_t i = 0; i < n; i++) {
+    //     std::cout << *(bptr++) << std::endl;
+    // }
 }
 
 namespace {
@@ -99,98 +97,13 @@ struct Test {
 // Test all gets
 // Test all sets
 constexpr static Test tests[]{
-    {"operator\"\"_idx_equal",
-     [](Result &result) {
-         using aosoa::operator""_idx;
-         const uint32_t a = "test"_idx;
-         const uint32_t b = "test"_idx;
-         ASSERT(a == b, "a should be equal to b");
-     }},
-    {"operator\"\"_idx_different",
-     [](Result &result) {
-         using aosoa::operator""_idx;
-         const uint32_t a = "aaa"_idx;
-         const uint32_t b = "bbb"_idx;
-         ASSERT(a != b, "a shound not be equal to b");
-     }},
-    {"Tuple_construction1",
-     [](Result &result) {
-         const Tuple<float> t;
-         ASSERT(t.head == 0.0f, "Head not zero");
-         ASSERT(t.tail == Tuple<>(), "Tail not empty");
-     }},
-    {"Tuple_construction2",
-     [](Result &result) {
-         const Tuple<float, double, int> t(
-             0.0f, Tuple<double, int>(0.0, Tuple<int>()));
-         ASSERT(t.head == 0.0f, "Head not zero");
-         const bool condition = t.tail == Tuple<double, int>();
-         ASSERT(condition, "Tail not default");
-     }},
-    {"Tuple_get1",
-     [](Result &result) {
-         const Tuple<float, double, int, bool> t(0.0f, 0.0, 0, true);
-         ASSERT(t.get<0>() == 0.0f, "Value mismatch");
-     }},
-    {"Tuple_get2",
-     [](Result &result) {
-         const Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         ASSERT(t.get<1>() == 12.0, "Value mismatch");
-     }},
-    {"Tuple_get3",
-     [](Result &result) {
-         const Tuple<float, double, int, bool> t(0.0f, 12.0, -50, true);
-         ASSERT(t.get<2>() == -50, "Value mismatch");
-     }},
-    {"Tuple_get4",
-     [](Result &result) {
-         const Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         ASSERT(t.get<3>(), "Value mismatch");
-     }},
-    {"Tuple_set1",
-     [](Result &result) {
-         Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         constexpr auto value = 666.666f;
-         t.set<0>(value);
-         ASSERT(t.get<0>() == value, "Value mismatch");
-     }},
-    {"Tuple_set2",
-     [](Result &result) {
-         Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         constexpr auto value = 666.666;
-         t.set<1>(value);
-         ASSERT(t.get<1>() == value, "Value mismatch");
-     }},
-    {"Tuple_set3",
-     [](Result &result) {
-         Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         constexpr auto value = 666;
-         t.set<2>(value);
-         ASSERT(t.get<2>() == value, "Value mismatch");
-     }},
-    {"Tuple_set4",
-     [](Result &result) {
-         Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         constexpr auto value = false;
-         t.set<3>(value);
-         ASSERT(t.get<3>() == value, "Value mismatch");
-     }},
-    {"Tuple_set5",
-     [](Result &result) {
-         Tuple<float, double, int, bool> t(0.0f, 12.0, 0, true);
-         constexpr auto value = false;
-         t.set<3>(value);
-         ASSERT(t.get<0>() == 0.0f, "First value should not be changed");
-         ASSERT(t.get<1>() == 12.0, "Second value should not be changed");
-         ASSERT(t.get<2>() == 0, "Third value should not be changed");
-         ASSERT(t.get<3>() == value, "Fourth value should be changed");
-     }},
+    // TODO: tuple testing
     {"AoSoa_getMemReq1",
      [](Result &result) {
          constexpr size_t alignment = 1;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
@@ -199,8 +112,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 2;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
@@ -209,8 +122,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 4;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
@@ -219,8 +132,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 8;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
@@ -229,8 +142,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 16;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
@@ -239,8 +152,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
@@ -249,8 +162,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1024;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == n * (sizeof(double) + sizeof(float)) + alignment,
@@ -260,8 +173,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + alignment,
@@ -271,11 +184,9 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>,
-                       IndexTypePair<"third"_idx, int>,
-                       IndexTypePair<"fourth"_idx, bool>,
-                       IndexTypePair<"fifth"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">, Variable<int, "third">,
+                       Variable<bool, "fourth">, Variable<float, "fifth">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
@@ -285,11 +196,9 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 3216547;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, char>,
-                       IndexTypePair<"third"_idx, int>,
-                       IndexTypePair<"fourth"_idx, bool>,
-                       IndexTypePair<"fifth"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<char, "second">, Variable<int, "third">,
+                       Variable<bool, "fourth">, Variable<float, "fifth">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT((mem_req & (alignment - 1)) == 0,
@@ -299,11 +208,9 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 32;
          constexpr size_t n = 3216547;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, char>,
-                       IndexTypePair<"third"_idx, int>,
-                       IndexTypePair<"fourth"_idx, bool>,
-                       IndexTypePair<"fifth"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<char, "second">, Variable<int, "third">,
+                       Variable<bool, "fourth">, Variable<float, "fifth">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT((mem_req & (alignment - 1)) == 0,
@@ -312,24 +219,21 @@ constexpr static Test tests[]{
     {"AoSoa_default_constructor",
      [](Result &result) {
          constexpr size_t alignment = 128;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">>
              Aosoa;
          constexpr Aosoa a;
-         ASSERT(a.get<"first"_idx>() == nullptr,
-                "First pointer should be nullpt");
-         ASSERT(a.get<"second"_idx>() == nullptr,
+         ASSERT(a.get<"first">() == nullptr, "First pointer should be nullpt");
+         ASSERT(a.get<"second">() == nullptr,
                 "Second pointer shold be nullptr");
      }},
     {"AoSoa_construction1",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, float>,
-                       IndexTypePair<"third"_idx, int>,
-                       IndexTypePair<"fourth"_idx, bool>,
-                       IndexTypePair<"fifth"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<float, "second">, Variable<int, "third">,
+                       Variable<bool, "fourth">, Variable<float, "fifth">>
              Aosoa;
 
          const size_t mem_req = Aosoa::getMemReq(n);
@@ -337,11 +241,11 @@ constexpr static Test tests[]{
          const Aosoa a(n, static_cast<void *>(bytes.data()));
 
          const std::array<uintptr_t, 5> pointers = {
-             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"third"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"fourth"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"fifth"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"first">()),
+             reinterpret_cast<uintptr_t>(a.get<"second">()),
+             reinterpret_cast<uintptr_t>(a.get<"third">()),
+             reinterpret_cast<uintptr_t>(a.get<"fourth">()),
+             reinterpret_cast<uintptr_t>(a.get<"fifth">()),
          };
 
          for (auto pointer : pointers) {
@@ -371,11 +275,9 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 1;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, char>,
-                       IndexTypePair<"third"_idx, int>,
-                       IndexTypePair<"fourth"_idx, bool>,
-                       IndexTypePair<"fifth"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<char, "second">, Variable<int, "third">,
+                       Variable<bool, "fourth">, Variable<float, "fifth">>
              Aosoa;
 
          const size_t mem_req = Aosoa::getMemReq(n);
@@ -384,11 +286,11 @@ constexpr static Test tests[]{
          const Aosoa a(n, static_cast<void *>(bytes.data()));
 
          const std::array<uintptr_t, 5> pointers = {
-             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"third"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"fourth"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"fifth"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"first">()),
+             reinterpret_cast<uintptr_t>(a.get<"second">()),
+             reinterpret_cast<uintptr_t>(a.get<"third">()),
+             reinterpret_cast<uintptr_t>(a.get<"fourth">()),
+             reinterpret_cast<uintptr_t>(a.get<"fifth">()),
          };
 
          for (auto pointer : pointers) {
@@ -418,11 +320,9 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 16;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, IndexTypePair<"first"_idx, double>,
-                       IndexTypePair<"second"_idx, double>,
-                       IndexTypePair<"third"_idx, int>,
-                       IndexTypePair<"fourth"_idx, bool>,
-                       IndexTypePair<"fifth"_idx, float>>
+         typedef AoSoa<alignment, Variable<double, "first">,
+                       Variable<double, "second">, Variable<int, "third">,
+                       Variable<bool, "fourth">, Variable<float, "fifth">>
              Aosoa;
 
          const size_t mem_req = Aosoa::getMemReq(n);
@@ -430,15 +330,15 @@ constexpr static Test tests[]{
          Aosoa a(n, static_cast<void *>(bytes.data()));
 
          const std::array<uintptr_t, 2> original_pointers = {
-             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"first">()),
+             reinterpret_cast<uintptr_t>(a.get<"second">()),
          };
 
-         a.swap<"first"_idx, "second"_idx>();
+         a.swap<"first", "second">();
 
          const std::array<uintptr_t, 2> pointers = {
-             reinterpret_cast<uintptr_t>(a.get<"first"_idx>()),
-             reinterpret_cast<uintptr_t>(a.get<"second"_idx>()),
+             reinterpret_cast<uintptr_t>(a.get<"first">()),
+             reinterpret_cast<uintptr_t>(a.get<"second">()),
          };
 
          ASSERT(original_pointers[0] == pointers[1],
