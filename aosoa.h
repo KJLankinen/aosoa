@@ -1,5 +1,5 @@
 /*
-    Aosoa
+    aosoa
     Copyright (C) 2024  Juhana Lankinen
 
     This program is free software: you can redistribute it and/or modify
@@ -38,7 +38,7 @@ namespace {
 // Use 'true' and 'false' as separate types to overload a function for each case
 template <bool> struct BoolAsType {};
 
-// ## Array usable on devices
+// Array usable on devices
 template <typename T, size_t N> struct Array {
     T items[N] = {};
     HOST DEVICE constexpr T &operator[](size_t i) { return items[i]; }
@@ -49,7 +49,7 @@ template <typename T, size_t N> struct Array {
     HOST DEVICE constexpr T *data() const { return &items; }
 };
 
-// ## Type equality
+// Type equality
 template <typename T, typename U> struct IsSame {
     constexpr static bool value = false;
 };
@@ -58,7 +58,7 @@ template <typename T> struct IsSame<T, T> {
     constexpr static bool value = true;
 };
 
-// ## Compile time string
+// Compile time string
 template <size_t N> struct CompileTimeString {
     char str[N + 1] = {};
 
@@ -66,7 +66,6 @@ template <size_t N> struct CompileTimeString {
         std::copy_n(s, N + 1, str);
     }
 
-    // Does this work on devices?
     consteval bool operator==(const CompileTimeString<N> rhs) const {
         return std::equal(rhs.str, rhs.str + N, str);
     }
@@ -123,6 +122,7 @@ template <typename, CompileTimeString> struct Variable {};
 } // namespace aosoa
 
 namespace {
+// Used to extract the type and the name from a Variable containing both
 template <typename> struct PairTraits;
 template <typename T, CompileTimeString CTS>
 struct PairTraits<aosoa::Variable<T, CTS>> {
@@ -169,11 +169,22 @@ struct IndexOfString {
 } // namespace
 
 namespace aosoa {
-template <typename... Vars> struct Aos;
+/*
+ * Row represents a row from a structure of arrays layout
+ * Given a structure of arrays with N arrays, the aggregation of the ith value
+ * of each array represent the ith row of the structure of arrays and can be
+ * instantiated as a variable of type Row.
+ *
+ * Row is implemented as something between a tuple and a normal struct.
+ * It's a tuple in the sense that it's a recursive type, but it's a struct in
+ * the sense that you can (only) access it's members by name, using a
+ * templated syntax like auto foo = row.get<"foo">();
+ * */
+template <typename... Vars> struct Row;
 
 // Specialize for a single type
-template <typename Var> struct Aos<Var> {
-    template <typename... Ts> friend struct Aos;
+template <typename Var> struct Row<Var> {
+    template <typename... Ts> friend struct Row;
 
     using Type = PairTraits<Var>::Type;
     static constexpr auto name = PairTraits<Var>::name;
@@ -181,20 +192,20 @@ template <typename Var> struct Aos<Var> {
   private:
     Type head = {};
 
-    // Gives a clearer compile error if trying to get/set a member with wrong
-    // name
-    template <CompileTimeString MemberName, CompileTimeString Candidate>
-    struct EqualStrings {
-        constexpr static bool value = MemberName == Candidate;
-    };
-
   public:
-    HOST DEVICE constexpr Aos() {}
-    HOST DEVICE constexpr Aos(const Aos<Var> &aos) : head(aos.head) {}
-    HOST DEVICE constexpr Aos(Type t) : head(t) {}
+    HOST DEVICE constexpr Row() {}
+    HOST DEVICE constexpr Row(const Row<Var> &row) : head(row.head) {}
+    HOST DEVICE constexpr Row(Type t) : head(t) {}
 
     template <CompileTimeString CTS>
-    HOST DEVICE [[nodiscard]] constexpr auto get() const {
+    HOST DEVICE [[nodiscard]] constexpr const auto &get() const {
+        static_assert(EqualStrings<name, CTS>::value,
+                      "No member with such name");
+        return head;
+    }
+
+    template <CompileTimeString CTS>
+    HOST DEVICE [[nodiscard]] constexpr auto &get() {
         static_assert(EqualStrings<name, CTS>::value,
                       "No member with such name");
         return head;
@@ -202,49 +213,61 @@ template <typename Var> struct Aos<Var> {
 
     template <CompileTimeString CTS, typename U>
     HOST DEVICE constexpr void set(U u) {
-        static_assert(EqualStrings<name, CTS>::value,
-                      "No member with such name");
-        head = u;
+        get<CTS>() = u;
     }
 
     template <typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const Aos<Ts...> &);
+    friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
 
-    bool operator==(const Aos<Var> &rhs) const { return head == rhs.head; }
+    bool operator==(const Row<Var> &rhs) const { return head == rhs.head; }
 
   private:
     std::ostream &output(std::ostream &os) const {
         os << PairTraits<Var>::name.str << ": " << head;
         return os;
     }
+
+    template <CompileTimeString MemberName, CompileTimeString Candidate>
+    struct EqualStrings {
+        constexpr static bool value = MemberName == Candidate;
+    };
 };
 
 // Specialize for two or more types
 template <typename Var1, typename Var2, typename... Vars>
-struct Aos<Var1, Var2, Vars...> {
-    template <typename... Ts> friend struct Aos;
+struct Row<Var1, Var2, Vars...> {
+    template <typename... Ts> friend struct Row;
 
+  private:
     using Type = PairTraits<Var1>::Type;
     static constexpr auto name = PairTraits<Var1>::name;
 
-  private:
-    using ThisType = Aos<Var1, Var2, Vars...>;
-    using TailType = Aos<Var2, Vars...>;
+    using ThisType = Row<Var1, Var2, Vars...>;
+    using TailType = Row<Var2, Vars...>;
 
     Type head = {};
     TailType tail = {};
 
   public:
-    HOST DEVICE constexpr Aos() {}
-    HOST DEVICE constexpr Aos(const ThisType &aos)
-        : head(aos.head), tail(aos.tail) {}
-    HOST DEVICE constexpr Aos(Type t, const TailType &aos)
-        : head(t), tail(aos) {}
+    HOST DEVICE constexpr Row() {}
+    HOST DEVICE constexpr Row(const ThisType &row)
+        : head(row.head), tail(row.tail) {}
+    HOST DEVICE constexpr Row(Type t, const TailType &row)
+        : head(t), tail(row) {}
     template <typename... Args>
-    HOST DEVICE constexpr Aos(Type t, Args... args) : head(t), tail(args...) {}
+    HOST DEVICE constexpr Row(Type t, Args... args) : head(t), tail(args...) {}
 
     template <CompileTimeString CTS>
-    HOST DEVICE [[nodiscard]] constexpr auto get() const {
+    HOST DEVICE [[nodiscard]] constexpr const auto &get() const {
+        if constexpr (CTS == name) {
+            return head;
+        } else {
+            return tail.template get<CTS>();
+        }
+    }
+
+    template <CompileTimeString CTS>
+    HOST DEVICE [[nodiscard]] constexpr auto &get() {
         if constexpr (CTS == name) {
             return head;
         } else {
@@ -254,15 +277,11 @@ struct Aos<Var1, Var2, Vars...> {
 
     template <CompileTimeString CTS, typename U>
     HOST DEVICE constexpr void set(U u) {
-        if constexpr (CTS == name) {
-            head = u;
-        } else {
-            tail.template set<CTS>(u);
-        }
+        get<CTS>() = u;
     }
 
     template <typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const Aos<Ts...> &);
+    friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
     bool operator==(const ThisType &rhs) const {
         return head == rhs.head && tail == rhs.tail;
     }
@@ -274,6 +293,9 @@ struct Aos<Var1, Var2, Vars...> {
     }
 
     // ==== Uniqueness of names ====
+    // Asserting at compile time that all the names in the template parameters
+    // are unique.
+    //
     // IndexOfString takes a string to match and a parameter pack of strings and
     // finds the index of the match string from the  parameter pack. Given that
     // the parameter pack does not contain the match string, the returned index
@@ -302,29 +324,49 @@ struct Aos<Var1, Var2, Vars...> {
                   "Found a clashing name at the index I of EqualIndices<I, J>");
 
   public:
+    // This helps StructureOfArrays assert it's names are unique by asserting
+    // that the resulting Row type has unique names
     constexpr static bool unique_names =
         EqualIndices<index_of_var1, num_strings>::value;
 };
 
 template <typename... Vars>
-std::ostream &operator<<(std::ostream &os, const Aos<Vars...> &aos) {
-    os << "Aos {\n  ";
-    return aos.output(os) << "\n}";
+std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
+    os << "Row {\n  ";
+    return row.output(os) << "\n}";
 }
 
-template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
-    using Aos = aosoa::Aos<Variables...>;
-    static_assert(Aos::unique_names, "AoSoa struct has clashing names");
+/*
+ * StructureOfArrays helps store and access data in a structure of arrays layout
+ *
+ * Instead of storing N instantiations of a structure with M members in a single
+ * array, it's more cache and GPU friendly to store the values of the struct in
+ * M separate arrays with N values in each.
+ *
+ * However, it's sometimes convenient or necessary to access/inspect all (or
+ * some) members of one particular instantiation of the struct at one go. The
+ * Row type defined above gives access to the values in this way.
+ *
+ * One can access values stored in the StructureOfArrays either by getting a
+ * full row, by getting an array of some particular members or by getting a
+ * single value from an array.
+ * */
+
+template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
+    using FullRow = aosoa::Row<Variables...>;
 
   private:
+    static_assert(FullRow::unique_names,
+                  "StructureOfArrays struct has clashing names");
+
     static constexpr size_t num_pointers = sizeof...(Variables);
     const size_t num_elements = 0;
     void *const data = nullptr;
     Array<void *, num_pointers> pointers;
 
   public:
-    HOST DEVICE constexpr AoSoa() {}
-    AoSoa(size_t n, void *ptr)
+    HOST DEVICE constexpr StructureOfArrays() {}
+    StructureOfArrays(size_t n, void *ptr)
         : num_elements(n), data(ptr),
           pointers(
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
@@ -375,7 +417,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
     }
 
     template <CompileTimeString CTS, size_t I>
-    HOST DEVICE [[nodiscard]] constexpr auto get() const {
+    HOST DEVICE [[nodiscard]] consteval auto get() const {
         return get<CTS>()[I];
     }
 
@@ -384,10 +426,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         return get<CTS>()[i];
     }
 
-    HOST DEVICE [[nodiscard]] constexpr Aos get(size_t i) const {
-        Aos aos{};
-        toAos<Variables...>(i, aos);
-        return aos;
+    HOST DEVICE [[nodiscard]] constexpr FullRow get(size_t i) const {
+        return toRow<Variables...>(i);
     }
 
     template <CompileTimeString CTS, typename T>
@@ -395,12 +435,13 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         get<CTS>()[i] = value;
     }
 
-    HOST DEVICE constexpr void set(size_t i, const Aos &t) const {
-        fromAos<Variables...>(i, t);
+    HOST DEVICE constexpr void set(size_t i, const FullRow &t) const {
+        fromRow<Variables...>(i, t);
     }
 
     template <size_t MA, typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const AoSoa<MA, Ts...> &);
+    friend std::ostream &operator<<(std::ostream &,
+                                    const StructureOfArrays<MA, Ts...> &);
 
   private:
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
@@ -419,7 +460,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         }
     }
 
-    [[nodiscard]] constexpr static size_t getAlignment() {
+    [[nodiscard]] consteval static size_t getAlignment() {
         static_assert((MIN_ALIGN & (MIN_ALIGN - 1)) == 0,
                       "MIN_ALIGN isn't a power of two");
         // Aligned by the strictest (largest) alignment requirement between all
@@ -446,19 +487,20 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         return pointers;
     }
 
-    template <size_t I, typename T, typename... Types>
+    template <size_t I, typename Head, typename... Tail>
     [[nodiscard]] static Array<void *, num_pointers>
     makeAlignedPointers(void *ptr, Array<void *, num_pointers> pointers,
                         size_t &&space, size_t num_elements) {
-        constexpr size_t size_of_type = sizeof(T);
+        constexpr size_t size_of_type = sizeof(Head);
         if (ptr) {
             ptr = std::align(getAlignment(), size_of_type, ptr, space);
             if (ptr) {
                 pointers[I] = ptr;
-                ptr = static_cast<void *>(static_cast<T *>(ptr) + num_elements);
+                ptr = static_cast<void *>(static_cast<Head *>(ptr) +
+                                          num_elements);
                 space -= size_of_type * num_elements;
 
-                return makeAlignedPointers<I + 1, Types...>(
+                return makeAlignedPointers<I + 1, Tail...>(
                     ptr, pointers, std::move(space), num_elements);
             }
 
@@ -469,20 +511,21 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
     }
 
     template <typename Head, typename... Tail>
-    HOST DEVICE constexpr void toAos(size_t i, Aos &aos) const {
+    [[nodiscard]] HOST DEVICE constexpr auto toRow(size_t i) const {
         using H = PairTraits<Head>;
-        aos.template set<H::name, typename H::Type>(get<H::name>(i));
-        if constexpr (sizeof...(Tail)) {
-            toAos<Tail...>(i, aos);
+        if constexpr (sizeof...(Tail) > 0) {
+            return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
+        } else {
+            return Row<Head>(get<H::name>(i));
         }
     }
 
     template <typename Head, typename... Tail>
-    HOST DEVICE constexpr void fromAos(size_t i, const Aos &aos) const {
+    HOST DEVICE constexpr void fromRow(size_t i, const FullRow &row) const {
         using H = PairTraits<Head>;
-        set<H::name, typename H::Type>(i, aos.template get<H::name>());
+        set<H::name, typename H::Type>(i, row.template get<H::name>());
         if constexpr (sizeof...(Tail) > 0) {
-            fromAos<Tail...>(i, aos);
+            fromRow<Tail...>(i, row);
         }
     }
 };
@@ -506,18 +549,18 @@ std::ostream &outputPointers(std::ostream &os,
 
 template <size_t A, typename... Variables>
 std::ostream &operator<<(std::ostream &os,
-                         const AoSoa<A, Variables...> &aosoa) {
-    typedef AoSoa<A, Variables...> AoSoa;
-    constexpr size_t n = AoSoa::num_pointers;
+                         const StructureOfArrays<A, Variables...> &soa) {
+    typedef StructureOfArrays<A, Variables...> Soa;
+    constexpr size_t n = Soa::num_pointers;
 
-    os << "AoSoa {\n  ";
+    os << "Soa {\n  ";
     os << "num members: " << n << "\n  ";
-    os << "num elements: " << aosoa.num_elements << "\n  ";
-    os << "memory requirement (bytes): " << AoSoa::getMemReq(aosoa.num_elements)
+    os << "num elements: " << soa.num_elements << "\n  ";
+    os << "memory requirement (bytes): " << Soa::getMemReq(soa.num_elements)
        << "\n  ";
-    os << "*data: " << aosoa.data << "\n  ";
+    os << "*data: " << soa.data << "\n  ";
     os << "*pointers[]: {\n    ";
-    outputPointers<n, 0, Variables...>(os, aosoa.pointers);
+    outputPointers<n, 0, Variables...>(os, soa.pointers);
     os << "\n}";
 
     return os;

@@ -9,10 +9,10 @@
 using namespace aosoa;
 
 void soa() {
-    typedef aosoa::AoSoa<128, aosoa::Variable<bool, "is_visible">,
-                         aosoa::Variable<float, "radius">,
-                         aosoa::Variable<double, "radius2">,
-                         aosoa::Variable<int, "num_hits">>
+    typedef aosoa::StructureOfArrays<128, aosoa::Variable<bool, "is_visible">,
+                                     aosoa::Variable<float, "radius">,
+                                     aosoa::Variable<double, "radius2">,
+                                     aosoa::Variable<int, "num_hits">>
         Thingie;
 
     const size_t n = 5;
@@ -52,7 +52,7 @@ void soa() {
         std::cout << soa2.get(i) << std::endl;
     }
 
-    thingie.set(2, Thingie::Aos(true, 1337.0f, 1337.0, -12));
+    thingie.set(2, Thingie::FullRow(true, 1337.0f, 1337.0, -12));
     std::cout << soa2.get(2) << std::endl;
 }
 
@@ -84,10 +84,10 @@ struct Test {
     } while (0)
 } // namespace
 
-// Aos
+// Row
 // construction
 // unique names
-// AoSoa
+// StructureOfArrays
 // Test all constructors: pay attention to space and pointers
 // Test getMemReq() with multiple template arguments
 // Test swap
@@ -96,7 +96,7 @@ struct Test {
 constexpr static Test tests[]{
     {"Aos_construct1",
      [](Result &result) {
-         const Aos<Variable<double, "foo">, Variable<float, "bar">,
+         const Row<Variable<double, "foo">, Variable<float, "bar">,
                    Variable<int, "baz">>
              aos(1.0, 1.0f, 1);
 
@@ -108,8 +108,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 1;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
@@ -118,8 +118,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 2;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
@@ -128,8 +128,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 4;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
@@ -138,8 +138,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 8;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
@@ -148,8 +148,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 16;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
@@ -158,8 +158,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
@@ -168,8 +168,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1024;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == n * (sizeof(double) + sizeof(float)) + alignment,
@@ -179,8 +179,8 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + alignment,
@@ -190,9 +190,10 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">, Variable<int, "third">,
-                       Variable<bool, "fourth">, Variable<float, "fifth">>
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<float, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
@@ -202,9 +203,10 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 3216547;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<char, "second">, Variable<int, "third">,
-                       Variable<bool, "fourth">, Variable<float, "fifth">>
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<char, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT((mem_req & (alignment - 1)) == 0,
@@ -214,9 +216,10 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 32;
          constexpr size_t n = 3216547;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<char, "second">, Variable<int, "third">,
-                       Variable<bool, "fourth">, Variable<float, "fifth">>
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<char, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
              Aosoa;
          const size_t mem_req = Aosoa::getMemReq(n);
          ASSERT((mem_req & (alignment - 1)) == 0,
@@ -225,8 +228,8 @@ constexpr static Test tests[]{
     {"AoSoa_default_constructor",
      [](Result &result) {
          constexpr size_t alignment = 128;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">>
+         typedef StructureOfArrays<alignment, Variable<double, "first">,
+                                   Variable<float, "second">>
              Aosoa;
          constexpr Aosoa a;
          ASSERT(a.get<"first">() == nullptr, "First pointer should be nullpt");
@@ -237,9 +240,10 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<float, "second">, Variable<int, "third">,
-                       Variable<bool, "fourth">, Variable<float, "fifth">>
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<float, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
              Aosoa;
 
          const size_t mem_req = Aosoa::getMemReq(n);
@@ -281,9 +285,10 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 1;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<char, "second">, Variable<int, "third">,
-                       Variable<bool, "fourth">, Variable<float, "fifth">>
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<char, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
              Aosoa;
 
          const size_t mem_req = Aosoa::getMemReq(n);
@@ -326,9 +331,10 @@ constexpr static Test tests[]{
      [](Result &result) {
          constexpr size_t alignment = 16;
          constexpr size_t n = 1000;
-         typedef AoSoa<alignment, Variable<double, "first">,
-                       Variable<double, "second">, Variable<int, "third">,
-                       Variable<bool, "fourth">, Variable<float, "fifth">>
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
              Aosoa;
 
          const size_t mem_req = Aosoa::getMemReq(n);
