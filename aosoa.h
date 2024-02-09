@@ -452,7 +452,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         return n & (getAlignment() - 1);
     }
 
-    template <typename T, typename... Ts> constexpr static size_t maxAlign() {
+    template <typename T, typename... Ts> consteval static size_t maxAlign() {
         if constexpr (sizeof...(Ts) == 0) {
             return alignof(T);
         } else {
