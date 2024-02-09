@@ -367,5 +367,4 @@ int main(int, char **) {
         printf("%s %s%s\n", result.success ? "OK  " : "FAIL", test_name,
                result.success ? "" : (" \"" + result.msg + "\"").c_str());
     }
-    soa();
 }
