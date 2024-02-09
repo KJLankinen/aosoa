@@ -152,6 +152,8 @@ template <size_t N, typename... Types> struct NthType {
 template <CompileTimeString MatchStr, CompileTimeString... Strings>
 struct IndexOfString {
   private:
+    template <size_t N> consteval static size_t index() { return N; }
+
     template <size_t N, CompileTimeString Head, CompileTimeString... Tail>
     consteval static size_t index() {
         if constexpr (MatchStr == Head) {
@@ -164,63 +166,80 @@ struct IndexOfString {
   public:
     constexpr static size_t i = index<0, Strings...>();
 };
-
-template <size_t, size_t, CompileTimeString CTS1, CompileTimeString CTS2>
-struct UniqueStrings {
-    constexpr static bool value = CTS1 != CTS2;
-};
-
-template <size_t, size_t, CompileTimeString>
-consteval static void assertUnique() {}
-
-template <size_t I, size_t J, CompileTimeString MatchStr,
-          CompileTimeString Head, CompileTimeString... Tail>
-consteval static void assertUnique() {
-    static_assert(UniqueStrings<I, J, MatchStr, Head>::value,
-                  "A name clash for two variables with indices I, J. Use "
-                  "unique names.");
-    assertUnique<I, J + 1, MatchStr, Tail...>();
-}
-
-template <size_t> consteval static bool assertUniqueNames() { return true; }
-template <size_t I, CompileTimeString Head, CompileTimeString... Tail>
-consteval static bool assertUniqueNames() {
-    assertUnique<I, I + 1, Head, Tail...>();
-    assertUniqueNames<I + 1, Tail...>();
-
-    return true;
-}
 } // namespace
 
 namespace aosoa {
 template <typename... Vars> struct Aos;
-template <> struct Aos<> {
-    constexpr bool operator==(const Aos<> &) const { return true; }
-    template <CompileTimeString>
-    HOST DEVICE [[nodiscard]] constexpr auto get() = delete;
-    template <CompileTimeString, typename U>
-    HOST DEVICE constexpr void set(U) = delete;
 
-  private:
-    std::ostream &output(std::ostream &os) const { return os; }
-};
-template <typename Var, typename... Vars> struct Aos<Var, Vars...> {
-    // All instantiations are friends with each other
+// Specialize for a single type
+template <typename Var> struct Aos<Var> {
     template <typename... Ts> friend struct Aos;
 
-    // The concrete type U given to Variable<U, CTS>
     using Type = PairTraits<Var>::Type;
     static constexpr auto name = PairTraits<Var>::name;
 
   private:
     Type head = {};
-    Aos<Vars...> tail = {};
+
+    // Gives a clearer compile error if trying to get/set a member with wrong
+    // name
+    template <CompileTimeString MemberName, CompileTimeString Candidate>
+    struct EqualStrings {
+        constexpr static bool value = MemberName == Candidate;
+    };
 
   public:
     HOST DEVICE constexpr Aos() {}
-    HOST DEVICE constexpr Aos(const Aos<Var, Vars...> &aos)
+    HOST DEVICE constexpr Aos(const Aos<Var> &aos) : head(aos.head) {}
+    HOST DEVICE constexpr Aos(Type t) : head(t) {}
+
+    template <CompileTimeString CTS>
+    HOST DEVICE [[nodiscard]] constexpr auto get() const {
+        static_assert(EqualStrings<name, CTS>::value,
+                      "No member with such name");
+        return head;
+    }
+
+    template <CompileTimeString CTS, typename U>
+    HOST DEVICE constexpr void set(U u) {
+        static_assert(EqualStrings<name, CTS>::value,
+                      "No member with such name");
+        head = u;
+    }
+
+    template <typename... Ts>
+    friend std::ostream &operator<<(std::ostream &, const Aos<Ts...> &);
+
+    bool operator==(const Aos<Var> &rhs) const { return head == rhs.head; }
+
+  private:
+    std::ostream &output(std::ostream &os) const {
+        os << PairTraits<Var>::name.str << ": " << head;
+        return os;
+    }
+};
+
+// Specialize for two or more types
+template <typename Var1, typename Var2, typename... Vars>
+struct Aos<Var1, Var2, Vars...> {
+    template <typename... Ts> friend struct Aos;
+
+    using Type = PairTraits<Var1>::Type;
+    static constexpr auto name = PairTraits<Var1>::name;
+
+  private:
+    using ThisType = Aos<Var1, Var2, Vars...>;
+    using TailType = Aos<Var2, Vars...>;
+
+    Type head = {};
+    TailType tail = {};
+
+  public:
+    HOST DEVICE constexpr Aos() {}
+    HOST DEVICE constexpr Aos(const ThisType &aos)
         : head(aos.head), tail(aos.tail) {}
-    HOST DEVICE constexpr Aos(Type t, Aos<Vars...> aos) : head(t), tail(aos) {}
+    HOST DEVICE constexpr Aos(Type t, const TailType &aos)
+        : head(t), tail(aos) {}
     template <typename... Args>
     HOST DEVICE constexpr Aos(Type t, Args... args) : head(t), tail(args...) {}
 
@@ -244,22 +263,47 @@ template <typename Var, typename... Vars> struct Aos<Var, Vars...> {
 
     template <typename... Ts>
     friend std::ostream &operator<<(std::ostream &, const Aos<Ts...> &);
-    bool operator==(const Aos<Var, Vars...> &rhs) const {
+    bool operator==(const ThisType &rhs) const {
         return head == rhs.head && tail == rhs.tail;
     }
 
   private:
     std::ostream &output(std::ostream &os) const {
-        os << PairTraits<Var>::name.str << ": " << head;
-        if constexpr (sizeof...(Vars) > 0) {
-            os << "\n  ";
-            return tail.output(os);
-        }
-
-        return os;
+        os << PairTraits<Var1>::name.str << ": " << head << "\n  ";
+        return tail.output(os);
     }
 
-    static_assert(assertUniqueNames<0, PairTraits<Vars>::name...>());
+    // ==== Uniqueness of names ====
+    // IndexOfString takes a string to match and a parameter pack of strings and
+    // finds the index of the match string from the  parameter pack. Given that
+    // the parameter pack does not contain the match string, the returned index
+    // should be the size of the parameter pack. Thus, if the index of string
+    // is the size of the parameter pack, the first string is unique.
+    template <size_t IndexOfStr, size_t SizeOfParamPack> struct EqualIndices {
+        constexpr static bool value = IndexOfStr == SizeOfParamPack;
+    };
+
+    // +1 so the clashing index takes Var1 into account, i.e. i == 1 points to
+    // Var2, not to the first of Vars...
+    constexpr static size_t index_of_var1 =
+        IndexOfString<PairTraits<Var1>::name, PairTraits<Var2>::name,
+                      PairTraits<Vars>::name...>::i +
+        1;
+
+    // +1 because Var2 is not a part of Vars... but is a part of the string
+    // parameter pack given to IndexOfString.
+    // Another +1 so the clashing index takes Var1 into account, i.e. i == 1
+    // points to Var2, not to the first of Vars...
+    constexpr static size_t num_strings = sizeof...(Vars) + 2;
+
+    // The tail structures do this to their own strings, i.e. Var2 is compared
+    // to Vars... and so on recursively
+    static_assert(EqualIndices<index_of_var1, num_strings>::value,
+                  "Found a clashing name at the index I of EqualIndices<I, J>");
+
+  public:
+    constexpr static bool unique_names =
+        EqualIndices<index_of_var1, num_strings>::value;
 };
 
 template <typename... Vars>
@@ -269,20 +313,22 @@ std::ostream &operator<<(std::ostream &os, const Aos<Vars...> &aos) {
 }
 
 template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
+    using Aos = aosoa::Aos<Variables...>;
+    static_assert(Aos::unique_names, "AoSoa struct has clashing names");
+
   private:
-    static constexpr size_t NUM_POINTERS = sizeof...(Variables);
+    static constexpr size_t num_pointers = sizeof...(Variables);
     const size_t num_elements = 0;
     void *const data = nullptr;
-    Array<void *, NUM_POINTERS> pointers;
+    Array<void *, num_pointers> pointers;
 
   public:
-    using Aos = aosoa::Aos<Variables...>;
     HOST DEVICE constexpr AoSoa() {}
     AoSoa(size_t n, void *ptr)
         : num_elements(n), data(ptr),
           pointers(
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  data, Array<void *, NUM_POINTERS>{}, ~0ul, num_elements)) {}
+                  data, Array<void *, num_pointers>{}, ~0ul, num_elements)) {}
 
     [[nodiscard]] static size_t getMemReq(size_t num_elements) {
         // Get proper begin alignment: the strictest (largest) alignment
@@ -292,7 +338,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
         size_t space = n;
         [[maybe_unused]] const auto pointers =
             makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                static_cast<void *>(&dummy), Array<void *, NUM_POINTERS>{},
+                static_cast<void *>(&dummy), Array<void *, num_pointers>{},
                 std::move(space), num_elements);
 
         const size_t num_bytes = n - space;
@@ -389,8 +435,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
     }
 
     template <size_t>
-    [[nodiscard]] static Array<void *, NUM_POINTERS>
-    makeAlignedPointers(void *ptr, Array<void *, NUM_POINTERS> pointers,
+    [[nodiscard]] static Array<void *, num_pointers>
+    makeAlignedPointers(void *ptr, Array<void *, num_pointers> pointers,
                         size_t &&space, size_t) {
         // Align the end of last pointer to the getAlignment() byte boundary so
         // the memory requirement is a multiple of getAlignment()
@@ -401,8 +447,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
     }
 
     template <size_t I, typename T, typename... Types>
-    [[nodiscard]] static Array<void *, NUM_POINTERS>
-    makeAlignedPointers(void *ptr, Array<void *, NUM_POINTERS> pointers,
+    [[nodiscard]] static Array<void *, num_pointers>
+    makeAlignedPointers(void *ptr, Array<void *, num_pointers> pointers,
                         size_t &&space, size_t num_elements) {
         constexpr size_t size_of_type = sizeof(T);
         if (ptr) {
@@ -416,10 +462,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
                     ptr, pointers, std::move(space), num_elements);
             }
 
-            return Array<void *, NUM_POINTERS>{};
+            return Array<void *, num_pointers>{};
         }
 
-        return Array<void *, NUM_POINTERS>{};
+        return Array<void *, num_pointers>{};
     }
 
     template <typename Head, typename... Tail>
@@ -439,15 +485,13 @@ template <size_t MIN_ALIGN, typename... Variables> struct AoSoa {
             fromAos<Tail...>(i, aos);
         }
     }
-
-    static_assert(assertUniqueNames<0, PairTraits<Variables>::name...>());
 };
 
 template <size_t N, size_t I, typename Head, typename... Tail>
 std::ostream &outputPointers(std::ostream &os,
                              const Array<void *, N> &pointers) {
     using H = PairTraits<Head>;
-    os << typeid(typename H::Type).name() << "* " << H::name.str << ": "
+    os << typeid(typename H::Type).name() << " *" << H::name.str << ": "
        << pointers[I];
 
     if constexpr (sizeof...(Tail) == 0) {
@@ -464,16 +508,16 @@ template <size_t A, typename... Variables>
 std::ostream &operator<<(std::ostream &os,
                          const AoSoa<A, Variables...> &aosoa) {
     typedef AoSoa<A, Variables...> AoSoa;
-    constexpr size_t N = AoSoa::NUM_POINTERS;
+    constexpr size_t n = AoSoa::num_pointers;
 
     os << "AoSoa {\n  ";
-    os << "num members: " << N << "\n  ";
+    os << "num members: " << n << "\n  ";
     os << "num elements: " << aosoa.num_elements << "\n  ";
     os << "memory requirement (bytes): " << AoSoa::getMemReq(aosoa.num_elements)
        << "\n  ";
     os << "*data: " << aosoa.data << "\n  ";
     os << "*pointers[]: {\n    ";
-    outputPointers<N, 0, Variables...>(os, aosoa.pointers);
+    outputPointers<n, 0, Variables...>(os, aosoa.pointers);
     os << "\n}";
 
     return os;

@@ -84,6 +84,9 @@ struct Test {
     } while (0)
 } // namespace
 
+// Aos
+// construction
+// unique names
 // AoSoa
 // Test all constructors: pay attention to space and pointers
 // Test getMemReq() with multiple template arguments
@@ -91,7 +94,16 @@ struct Test {
 // Test all gets
 // Test all sets
 constexpr static Test tests[]{
-    // TODO: tuple testing
+    {"Aos_construct1",
+     [](Result &result) {
+         const Aos<Variable<double, "foo">, Variable<float, "bar">,
+                   Variable<int, "baz">>
+             aos(1.0, 1.0f, 1);
+
+         ASSERT(aos.get<"foo">() == 1.0, "foo incorrect");
+         ASSERT(aos.get<"bar">() == 1.0f, "bar incorrect");
+         ASSERT(aos.get<"baz">() == 1, "baz incorrect");
+     }},
     {"AoSoa_getMemReq1",
      [](Result &result) {
          constexpr size_t alignment = 1;
