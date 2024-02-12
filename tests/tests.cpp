@@ -92,23 +92,96 @@ struct Test {
 // Test all sets
 
 constexpr static Test tests[]{
-    {"Aos_construct1",
+    {"Row_construct1",
      [](Result &result) {
          const Row<Variable<double, "foo">, Variable<float, "bar">,
                    Variable<int, "baz">>
-             aos(1.0, 1.0f, 1);
+             row(1.0, 1.0f, 1);
 
-         ASSERT(aos.get<"foo">() == 1.0, "foo incorrect");
-         ASSERT(aos.get<"bar">() == 1.0f, "bar incorrect");
-         ASSERT(aos.get<"baz">() == 1, "baz incorrect");
+         ASSERT(row.get<"foo">() == 1.0, "foo incorrect");
+         ASSERT(row.get<"bar">() == 1.0f, "bar incorrect");
+         ASSERT(row.get<"baz">() == 1, "baz incorrect");
      }},
-    {"sizeof(aos)",
+    {"Row_construct2",
+     [](Result &result) {
+         const Row<Variable<double, "foo">> row(1.0);
+         ASSERT(row.get<"foo">() == 1.0, "foo incorrect");
+     }},
+    {"Row_construct3",
+     [](Result &result) {
+         const Row<Variable<double, "foo">, Variable<float, "bar">,
+                   Variable<int, "baz">>
+             row(Row<Variable<double, "foo">, Variable<float, "bar">,
+                     Variable<int, "baz">>{5.0, 6.0f, 7});
+
+         ASSERT(row.get<"foo">() == 5.0, "foo incorrect");
+         ASSERT(row.get<"bar">() == 6.0f, "bar incorrect");
+         ASSERT(row.get<"baz">() == 7, "baz incorrect");
+     }},
+    {"Row_construct4",
+     [](Result &result) {
+         const Row<Variable<double, "foo">, Variable<float, "bar">,
+                   Variable<int, "baz">>
+             row(5.0,
+                 Row<Variable<float, "bar">, Variable<int, "baz">>{6.0f, 7});
+
+         ASSERT(row.get<"foo">() == 5.0, "foo incorrect");
+         ASSERT(row.get<"bar">() == 6.0f, "bar incorrect");
+         ASSERT(row.get<"baz">() == 7, "baz incorrect");
+     }},
+    {"Row_construct5",
+     [](Result &result) {
+         const Row<Variable<double, "foo">, Variable<float, "bar">,
+                   Variable<int, "baz">>
+             row(5.0, 6.0f, 7);
+
+         ASSERT(row.get<"foo">() == 5.0, "foo incorrect");
+         ASSERT(row.get<"bar">() == 6.0f, "bar incorrect");
+         ASSERT(row.get<"baz">() == 7, "baz incorrect");
+     }},
+    {"Row_default_construct",
+     [](Result &result) {
+         const Row<Variable<double, "foo">, Variable<float, "bar">,
+                   Variable<int, "baz">>
+             row;
+
+         ASSERT(row.get<"foo">() == 0.0, "foo incorrect");
+         ASSERT(row.get<"bar">() == 0.0f, "bar incorrect");
+         ASSERT(row.get<"baz">() == 0, "baz incorrect");
+     }},
+    {"Row_set",
+     [](Result &result) {
+         Row<Variable<double, "foo">> row(1.0);
+         row.set<"foo">(2.0);
+         ASSERT(row.get<"foo">() == 2.0, "foo incorrect");
+     }},
+    {"Row_set2",
+     [](Result &result) {
+         Row<Variable<double, "foo">> row(1.0);
+         row.get<"foo">() = 2.0;
+         ASSERT(row.get<"foo">() == 2.0, "foo incorrect");
+     }},
+    {"Row_equality1",
+     [](Result &result) {
+         Row<Variable<double, "foo">> row(1.0);
+         row.get<"foo">() = 2.0;
+         ASSERT((row == Row<Variable<double, "foo">>(2.0)), "Values inequal");
+     }},
+    {"Row_equality2",
+     [](Result &result) {
+         typedef Row<Variable<double, "foo">, Variable<int, "bar">,
+                     Variable<char, "c">>
+             R;
+         const R row(1.0, 22222, 'c');
+         ASSERT((row == R(1.0, 22222, 'c')), "Values inequal");
+     }},
+    {"sizeof(row)",
      [](Result &result) {
          const Row<Variable<double, "foo">, Variable<float, "bar">,
                    Variable<int, "baz">, Variable<char, "foo2">>
-             aos(1.0, 1.0f, 1, 'b');
+             row(1.0, 1.0f, 1, 'b');
 
-         ASSERT(sizeof(aos) == 3 * sizeof(double), "Size incorrect");
+         ASSERT(sizeof(row) == 3 * sizeof(double), "Size incorrect");
      }},
     {"AoSoa_getMemReq1",
      [](Result &result) {
@@ -116,8 +189,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
      }},
     {"AoSoa_getMemReq2",
@@ -126,8 +199,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
      }},
     {"AoSoa_getMemReq3",
@@ -136,8 +209,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
      }},
     {"AoSoa_getMemReq4",
@@ -146,8 +219,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
      }},
     {"AoSoa_getMemReq5",
@@ -156,8 +229,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
      }},
     {"AoSoa_getMemReq6",
@@ -166,8 +239,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
      }},
     {"AoSoa_getMemReq7",
@@ -176,8 +249,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1024;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == n * (sizeof(double) + sizeof(float)) + alignment,
                 "Memory requirement mismatch");
      }},
@@ -187,8 +260,8 @@ constexpr static Test tests[]{
          constexpr size_t n = 1000;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + alignment,
                 "Memory requirement mismatch");
      }},
@@ -200,8 +273,8 @@ constexpr static Test tests[]{
              alignment, Variable<double, "first">, Variable<float, "second">,
              Variable<int, "third">, Variable<bool, "fourth">,
              Variable<float, "fifth">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
                 "Memory requirement mismatch");
      }},
@@ -213,8 +286,8 @@ constexpr static Test tests[]{
              alignment, Variable<double, "first">, Variable<char, "second">,
              Variable<int, "third">, Variable<bool, "fourth">,
              Variable<float, "fifth">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT((mem_req & (alignment - 1)) == 0,
                 "Total memory requirement must be a multiple of alignment");
      }},
@@ -226,8 +299,8 @@ constexpr static Test tests[]{
              alignment, Variable<double, "first">, Variable<char, "second">,
              Variable<int, "third">, Variable<bool, "fourth">,
              Variable<float, "fifth">>
-             Aosoa;
-         const size_t mem_req = Aosoa::getMemReq(n);
+             Soa;
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT((mem_req & (alignment - 1)) == 0,
                 "Total memory requirement must be a multiple of alignment");
      }},
@@ -236,8 +309,8 @@ constexpr static Test tests[]{
          constexpr size_t alignment = 128;
          typedef StructureOfArrays<alignment, Variable<double, "first">,
                                    Variable<float, "second">>
-             Aosoa;
-         constexpr Aosoa a;
+             Soa;
+         constexpr Soa a;
          ASSERT(a.get<"first">() == nullptr, "First pointer should be nullpt");
          ASSERT(a.get<"second">() == nullptr,
                 "Second pointer shold be nullptr");
@@ -250,11 +323,11 @@ constexpr static Test tests[]{
              alignment, Variable<double, "first">, Variable<float, "second">,
              Variable<int, "third">, Variable<bool, "fourth">,
              Variable<float, "fifth">>
-             Aosoa;
+             Soa;
 
-         const size_t mem_req = Aosoa::getMemReq(n);
+         const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         const Aosoa a(n, static_cast<void *>(bytes.data()));
+         const Soa a(n, static_cast<void *>(bytes.data()));
 
          const std::array<uintptr_t, 5> pointers = {
              reinterpret_cast<uintptr_t>(a.get<"first">()),
@@ -295,12 +368,12 @@ constexpr static Test tests[]{
              alignment, Variable<double, "first">, Variable<char, "second">,
              Variable<int, "third">, Variable<bool, "fourth">,
              Variable<float, "fifth">>
-             Aosoa;
+             Soa;
 
-         const size_t mem_req = Aosoa::getMemReq(n);
+         const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 18008, "Memory requirement incorrect");
          std::vector<uint8_t> bytes(mem_req);
-         const Aosoa a(n, static_cast<void *>(bytes.data()));
+         const Soa a(n, static_cast<void *>(bytes.data()));
 
          const std::array<uintptr_t, 5> pointers = {
              reinterpret_cast<uintptr_t>(a.get<"first">()),
@@ -341,11 +414,11 @@ constexpr static Test tests[]{
              alignment, Variable<double, "first">, Variable<double, "second">,
              Variable<int, "third">, Variable<bool, "fourth">,
              Variable<float, "fifth">>
-             Aosoa;
+             Soa;
 
-         const size_t mem_req = Aosoa::getMemReq(n);
+         const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Aosoa a(n, static_cast<void *>(bytes.data()));
+         Soa a(n, static_cast<void *>(bytes.data()));
 
          const std::array<uintptr_t, 2> original_pointers = {
              reinterpret_cast<uintptr_t>(a.get<"first">()),
@@ -363,6 +436,110 @@ constexpr static Test tests[]{
                 "Pointers not swapped correctly 1");
          ASSERT(original_pointers[1] == pointers[0],
                 "Pointers not swapped correctly 2");
+     }},
+    {"AoSoa_get_set1",
+     [](Result &result) {
+         // Assuming that values are by default 0... Might not be the case
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         constexpr size_t a = 0;
+         constexpr size_t b = 32;
+         constexpr size_t c = 555;
+
+         soa.set(a, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+         soa.set(b, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+         soa.set(c, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             const bool is_default = i != a && i != b && i != c;
+             if (is_default) {
+                 ASSERT(soa.get(i) == Soa::FullRow(0.0, 0.0, 0, false, 0.0f),
+                        "Incorrect default value");
+             } else {
+                 ASSERT(soa.get(i) == Soa::FullRow(1.0, 2.0, 3, true, 5.0f),
+                        "Incorrect default value");
+             }
+         }
+     }},
+    {"AoSoa_get_set2",
+     [](Result &result) {
+         // Assuming that values are by default 0... Might not be the case
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         constexpr size_t a = 0;
+         constexpr size_t b = 2;
+         constexpr size_t c = 55;
+
+         soa.set<"first">(a, 5.0);
+         soa.set<"first">(b, 666.666);
+         soa.set<"first">(c, 321);
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             const bool is_default = i != a && i != b && i != c;
+             if (is_default) {
+                 ASSERT(soa.get<"first">(i) == 0.0, "Incorrect default value");
+             } else if (i == a) {
+                 ASSERT(soa.get<"first">(i) == 5.0, "Incorrect value");
+             } else if (i == b) {
+                 ASSERT(soa.get<"first">(i) == 666.666, "Incorrect value");
+             } else if (i == c) {
+                 ASSERT(soa.get<"first">(i) == 321, "Incorrect value");
+             }
+         }
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             ASSERT(soa.get<"second">(i) == 0.0, "Incorrect default value");
+             ASSERT(soa.get<"third">(i) == 0, "Incorrect default value");
+             ASSERT(soa.get<"fourth">(i) == false, "Incorrect default value");
+             ASSERT(soa.get<"fifth">(i) == 0.0f, "Incorrect default value");
+         }
+     }},
+    {"AoSoa_get_set3",
+     [](Result &result) {
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         constexpr size_t a = 0;
+         constexpr size_t b = 2;
+         constexpr size_t c = 55;
+
+         auto value = soa.get<"first">();
+         value[a] = 1.0;
+         value[b] = 2.0;
+         value[c] = 3.0;
+
+         ASSERT(soa.get<"first">(a) == 1.0, "Value incorrect");
+         ASSERT(soa.get<"first">(b) == 2.0, "Value incorrect");
+         ASSERT(soa.get<"first">(c) == 3.0, "Value incorrect");
      }},
 };
 

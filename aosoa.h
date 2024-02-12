@@ -410,7 +410,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <CompileTimeString CTS>
-    HOST DEVICE [[nodiscard]] constexpr auto get() const {
+    HOST DEVICE [[nodiscard]] auto get() const {
         constexpr size_t i =
             IndexOfString<CTS, PairTraits<Variables>::name...>::i;
         using Type =
@@ -420,31 +420,37 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <CompileTimeString CTS, size_t I>
-    HOST DEVICE [[nodiscard]] consteval auto get() const {
+    HOST DEVICE [[nodiscard]] auto get() const {
         return get<CTS>()[I];
     }
 
     template <CompileTimeString CTS>
-    HOST DEVICE [[nodiscard]] constexpr auto get(size_t i) const {
+    HOST DEVICE [[nodiscard]] auto get(size_t i) const {
         return get<CTS>()[i];
     }
 
-    HOST DEVICE [[nodiscard]] constexpr FullRow get(size_t i) const {
+    HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
         return toRow<Variables...>(i);
     }
 
     template <CompileTimeString CTS, typename T>
-    HOST DEVICE constexpr void set(size_t i, T value) const {
+    HOST DEVICE void set(size_t i, T value) const {
         get<CTS>()[i] = value;
     }
 
-    HOST DEVICE constexpr void set(size_t i, const FullRow &t) const {
+    HOST DEVICE void set(size_t i, const FullRow &t) const {
         fromRow<Variables...>(i, t);
+    }
+
+    HOST DEVICE void set(size_t i, FullRow &&t) const {
+        fromRow<Variables...>(i, std::move(t));
     }
 
     template <size_t MA, typename... Ts>
     friend std::ostream &operator<<(std::ostream &,
                                     const StructureOfArrays<MA, Ts...> &);
+
+    HOST DEVICE size_t size() const { return num_elements; }
 
   private:
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
@@ -505,15 +511,13 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
                 return makeAlignedPointers<I + 1, Tail...>(
                     ptr, pointers, std::move(space), num_elements);
             }
-
-            return Pointers{};
         }
 
         return Pointers{};
     }
 
     template <typename Head, typename... Tail>
-    [[nodiscard]] HOST DEVICE constexpr auto toRow(size_t i) const {
+    [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
         using H = PairTraits<Head>;
         if constexpr (sizeof...(Tail) > 0) {
             return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
@@ -523,11 +527,20 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <typename Head, typename... Tail>
-    HOST DEVICE constexpr void fromRow(size_t i, const FullRow &row) const {
+    HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
         using H = PairTraits<Head>;
         set<H::name, typename H::Type>(i, row.template get<H::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, row);
+        }
+    }
+
+    template <typename Head, typename... Tail>
+    HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
+        using H = PairTraits<Head>;
+        set<H::name, typename H::Type>(i, row.template get<H::name>());
+        if constexpr (sizeof...(Tail) > 0) {
+            fromRow<Tail...>(i, std::move(row));
         }
     }
 };
