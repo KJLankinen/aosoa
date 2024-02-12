@@ -41,6 +41,7 @@ template <bool> struct BoolAsType {};
 // Array usable on devices
 template <typename T, size_t N> struct Array {
     T items[N] = {};
+
     HOST DEVICE constexpr T &operator[](size_t i) { return items[i]; }
     HOST DEVICE constexpr const T &operator[](size_t i) const {
         return items[i];
@@ -359,10 +360,12 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     static_assert(FullRow::unique_names,
                   "StructureOfArrays struct has clashing names");
 
-    static constexpr size_t num_pointers = sizeof...(Variables);
     const size_t num_elements = 0;
     void *const data = nullptr;
-    Array<void *, num_pointers> pointers;
+    static constexpr size_t num_pointers = sizeof...(Variables);
+
+    using Pointers = Array<void *, num_pointers>;
+    Pointers pointers;
 
   public:
     HOST DEVICE constexpr StructureOfArrays() {}
@@ -370,7 +373,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         : num_elements(n), data(ptr),
           pointers(
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  data, Array<void *, num_pointers>{}, ~0ul, num_elements)) {}
+                  data, Pointers{}, ~0ul, num_elements)) {}
 
     [[nodiscard]] static size_t getMemReq(size_t num_elements) {
         // Get proper begin alignment: the strictest (largest) alignment
@@ -380,8 +383,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         size_t space = n;
         [[maybe_unused]] const auto pointers =
             makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                static_cast<void *>(&dummy), Array<void *, num_pointers>{},
-                std::move(space), num_elements);
+                static_cast<void *>(&dummy), Pointers{}, std::move(space),
+                num_elements);
 
         const size_t num_bytes = n - space;
         // Require a block of (M + 1) * alignment bytes, where M is an integer.
@@ -476,9 +479,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <size_t>
-    [[nodiscard]] static Array<void *, num_pointers>
-    makeAlignedPointers(void *ptr, Array<void *, num_pointers> pointers,
-                        size_t &&space, size_t) {
+    [[nodiscard]] static Pointers
+    makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space, size_t) {
         // Align the end of last pointer to the getAlignment() byte boundary so
         // the memory requirement is a multiple of getAlignment()
         if (ptr) {
@@ -488,9 +490,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <size_t I, typename Head, typename... Tail>
-    [[nodiscard]] static Array<void *, num_pointers>
-    makeAlignedPointers(void *ptr, Array<void *, num_pointers> pointers,
-                        size_t &&space, size_t num_elements) {
+    [[nodiscard]] static Pointers
+    makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space,
+                        size_t num_elements) {
         constexpr size_t size_of_type = sizeof(Head);
         if (ptr) {
             ptr = std::align(getAlignment(), size_of_type, ptr, space);
@@ -504,10 +506,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
                     ptr, pointers, std::move(space), num_elements);
             }
 
-            return Array<void *, num_pointers>{};
+            return Pointers{};
         }
 
-        return Array<void *, num_pointers>{};
+        return Pointers{};
     }
 
     template <typename Head, typename... Tail>
