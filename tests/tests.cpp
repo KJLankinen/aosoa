@@ -59,8 +59,8 @@ void soa() {
 namespace {
 // Definitions for a simple testing harness
 struct Result {
-    bool success;
-    std::string msg;
+    bool success = true;
+    std::string msg = "";
 };
 
 typedef void (*Fn)(Result &);
@@ -68,9 +68,6 @@ struct Test {
     const char *test_name;
     Fn fn;
 };
-
-#define OK()                                                                   \
-    Result { true, "" }
 
 #define ERR(output)                                                            \
     Result { false, output }
@@ -93,6 +90,7 @@ struct Test {
 // Test swap
 // Test all gets
 // Test all sets
+
 constexpr static Test tests[]{
     {"Aos_construct1",
      [](Result &result) {
@@ -103,6 +101,14 @@ constexpr static Test tests[]{
          ASSERT(aos.get<"foo">() == 1.0, "foo incorrect");
          ASSERT(aos.get<"bar">() == 1.0f, "bar incorrect");
          ASSERT(aos.get<"baz">() == 1, "baz incorrect");
+     }},
+    {"sizeof(aos)",
+     [](Result &result) {
+         const Row<Variable<double, "foo">, Variable<float, "bar">,
+                   Variable<int, "baz">, Variable<char, "foo2">>
+             aos(1.0, 1.0f, 1, 'b');
+
+         ASSERT(sizeof(aos) == 3 * sizeof(double), "Size incorrect");
      }},
     {"AoSoa_getMemReq1",
      [](Result &result) {
@@ -361,8 +367,8 @@ constexpr static Test tests[]{
 };
 
 int main(int, char **) {
-    Result result;
     for (auto [test_name, test] : tests) {
+        Result result{};
         test(result);
         printf("%s %s%s\n", result.success ? "OK  " : "FAIL", test_name,
                result.success ? "" : (" \"" + result.msg + "\"").c_str());
