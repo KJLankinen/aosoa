@@ -50,7 +50,7 @@ template <typename T, size_t N> struct Array {
     HOST DEVICE constexpr T *data() const { return &items; }
 };
 
-// Type equality
+// Type equality, usable on devices
 template <typename T, typename U> struct IsSame {
     constexpr static bool value = false;
 };
@@ -118,12 +118,13 @@ template <CompileTimeString CTS> constexpr auto operator""_cts() { return CTS; }
 } // namespace
 
 namespace aosoa {
-// Helper for matching a compile time string to a type T
+// Usage: Variable<double, "foo">
 template <typename, CompileTimeString> struct Variable {};
 } // namespace aosoa
 
 namespace {
-// Used to extract the type and the name from a Variable containing both
+// Used to extract the type and the name from a Variable<typename,
+// CompileTimeString>
 template <typename> struct PairTraits;
 template <typename T, CompileTimeString CTS>
 struct PairTraits<aosoa::Variable<T, CTS>> {
@@ -146,6 +147,7 @@ template <size_t N, typename... Types> struct NthType {
     static constexpr auto t = ofType<0, Types...>();
 
   public:
+    // no std?
     using Type = std::remove_const_t<decltype(t)>;
 };
 
