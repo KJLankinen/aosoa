@@ -69,27 +69,14 @@ struct Test {
     Fn fn;
 };
 
-#define ERR(output)                                                            \
-    Result { false, output }
-
 #define ASSERT(condition, msg)                                                 \
     do {                                                                       \
         if (!(condition)) {                                                    \
-            result = ERR(msg);                                                 \
+            result = Result{false, msg};                                       \
             return;                                                            \
         }                                                                      \
     } while (0)
 } // namespace
-
-// Row
-// construction
-// unique names
-// StructureOfArrays
-// Test all constructors: pay attention to space and pointers
-// Test getMemReq() with multiple template arguments
-// Test swap
-// Test all gets
-// Test all sets
 
 constexpr static Test tests[]{
     {"Row_construct1",
@@ -181,6 +168,7 @@ constexpr static Test tests[]{
                    Variable<int, "baz">, Variable<char, "foo2">>
              row(1.0, 1.0f, 1, 'b');
 
+         // double + (float + int) + (char + padding)
          ASSERT(sizeof(row) == 3 * sizeof(double), "Size incorrect");
      }},
     {"AoSoa_getMemReq1",
@@ -304,6 +292,46 @@ constexpr static Test tests[]{
          ASSERT((mem_req & (alignment - 1)) == 0,
                 "Total memory requirement must be a multiple of alignment");
      }},
+    {"AoSoa_getMemReq_BigType",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 100;
+
+         typedef StructureOfArrays<
+             alignment, Variable<double, "1">, Variable<double, "2">,
+             Variable<double, "3">, Variable<double, "4">,
+             Variable<double, "5">, Variable<double, "6">,
+             Variable<double, "7">, Variable<double, "8">,
+             Variable<double, "9">, Variable<double, "10">,
+             Variable<double, "11">, Variable<float, "12">,
+             Variable<float, "13">, Variable<float, "14">,
+             Variable<float, "15">, Variable<float, "16">,
+             Variable<float, "17">, Variable<float, "18">,
+             Variable<float, "19">, Variable<float, "20">,
+             Variable<float, "21">, Variable<float, "22">,
+             Variable<float, "23">, Variable<float, "24">, Variable<int, "25">,
+             Variable<int, "26">, Variable<int, "27">, Variable<int, "28">,
+             Variable<int, "29">, Variable<int, "30">, Variable<int, "31">,
+             Variable<int, "32">, Variable<int, "33">, Variable<int, "34">,
+             Variable<int, "35">, Variable<int, "36">, Variable<int, "37">,
+             Variable<int, "38">, Variable<int, "39">, Variable<int, "40">,
+             Variable<int, "41">, Variable<int, "42">, Variable<int, "43">,
+             Variable<int, "44">, Variable<int, "45">, Variable<int, "46">,
+             Variable<int, "47">, Variable<int, "48">, Variable<int, "49">,
+             Variable<int, "50">, Variable<bool, "51">, Variable<bool, "52">,
+             Variable<bool, "53">, Variable<bool, "54">, Variable<bool, "55">,
+             Variable<bool, "56">, Variable<bool, "57">, Variable<bool, "58">,
+             Variable<bool, "59">, Variable<bool, "60">, Variable<bool, "61">,
+             Variable<bool, "62">, Variable<bool, "63">, Variable<char, "64">,
+             Variable<char, "65">, Variable<char, "66">, Variable<char, "67">,
+             Variable<char, "68">, Variable<char, "69">, Variable<char, "70">,
+             Variable<char, "71">, Variable<char, "72">, Variable<char, "73">>
+             BigType;
+
+         const size_t mem_req = BigType::getMemReq(n);
+         ASSERT((mem_req & (alignment - 1)) == 0,
+                "Total memory requirement must be a multiple of alignment");
+     }},
     {"AoSoa_default_constructor",
      [](Result &result) {
          constexpr size_t alignment = 128;
@@ -329,17 +357,20 @@ constexpr static Test tests[]{
          std::vector<uint8_t> bytes(mem_req);
          const Soa a(n, static_cast<void *>(bytes.data()));
 
-         const std::array<uintptr_t, 5> pointers = {
-             reinterpret_cast<uintptr_t>(a.get<"first">()),
-             reinterpret_cast<uintptr_t>(a.get<"second">()),
-             reinterpret_cast<uintptr_t>(a.get<"third">()),
-             reinterpret_cast<uintptr_t>(a.get<"fourth">()),
-             reinterpret_cast<uintptr_t>(a.get<"fifth">()),
+         const std::array<void *, 5> pointers = {
+             static_cast<void *>(a.get<"first">()),
+             static_cast<void *>(a.get<"second">()),
+             static_cast<void *>(a.get<"third">()),
+             static_cast<void *>(a.get<"fourth">()),
+             static_cast<void *>(a.get<"fifth">()),
          };
 
+         constexpr size_t max = ~0ul;
+         size_t space = max;
          for (auto pointer : pointers) {
-             ASSERT((pointer & (alignment - 1)) == 0,
-                    "Pointer is not aligned correctly");
+             auto ptr = std::align(alignment, 1, pointer, space);
+             ASSERT(ptr == pointer, "Pointer is not aligned correctly");
+             ASSERT(space == max, "Space should not change");
          }
 
          constexpr std::array<uintptr_t, 4> sizes = {
@@ -350,12 +381,17 @@ constexpr static Test tests[]{
          };
 
          for (size_t i = 0; i < pointers.size() - 1; i++) {
-             ASSERT(pointers[i + 1] - pointers[i] == sizes[i], "Size wrong");
+             ASSERT(reinterpret_cast<uintptr_t>(pointers[i + 1]) -
+                            reinterpret_cast<uintptr_t>(pointers[i]) ==
+                        sizes[i],
+                    "Size wrong");
          }
 
          const uintptr_t begin = reinterpret_cast<uintptr_t>(bytes.data());
-         const uintptr_t bytes_at_end = mem_req + begin - pointers[4] - 4096;
-         const uintptr_t bytes_at_begin = pointers[0] - begin;
+         const uintptr_t bytes_at_end =
+             mem_req + begin - reinterpret_cast<uintptr_t>(pointers[4]) - 4096;
+         const uintptr_t bytes_at_begin =
+             reinterpret_cast<uintptr_t>(pointers[0]) - begin;
          ASSERT(
              bytes_at_end == alignment - bytes_at_begin,
              "Bytes at the end should be alignment - bytes at the beginning");
@@ -540,6 +576,33 @@ constexpr static Test tests[]{
          ASSERT(soa.get<"first">(a) == 1.0, "Value incorrect");
          ASSERT(soa.get<"first">(b) == 2.0, "Value incorrect");
          ASSERT(soa.get<"first">(c) == 3.0, "Value incorrect");
+     }},
+    {"AoSoa_get_set4",
+     [](Result &result) {
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         constexpr size_t a = 0;
+         constexpr size_t b = 2;
+         constexpr size_t c = 55;
+
+         auto value = soa.get<"first">();
+         value[a] = 1.0;
+         value[b] = 2.0;
+         value[c] = 3.0;
+
+         ASSERT((soa.get<"first", a>() == 1.0), "Value incorrect");
+         ASSERT((soa.get<"first", b>() == 2.0), "Value incorrect");
+         ASSERT((soa.get<"first", c>() == 3.0), "Value incorrect");
      }},
 };
 
