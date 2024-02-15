@@ -356,13 +356,20 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
  * */
 
 template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
+    // TODO: maybe this should perform allocation and deallocation?
+    // Give both functions at construction, then this uses those internally
+    // Only on host, make sure no deallocation happens on device destuctor (how?
+    // separate destructors?) When/how device destructor is called? Capacity and
+    // size must be mutable, so the size can grow/decrease
     using FullRow = aosoa::Row<Variables...>;
 
   private:
     static_assert(FullRow::unique_names,
                   "StructureOfArrays struct has clashing names");
 
-    const size_t num_elements = 0;
+    // capacity is the maximum number of elements held by each pointer
+    const size_t capacity = 0;
+    size_t num_elements = 0;
     void *const data = nullptr;
     static constexpr size_t num_pointers = sizeof...(Variables);
 
@@ -372,12 +379,12 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
   public:
     HOST DEVICE constexpr StructureOfArrays() {}
     StructureOfArrays(size_t n, void *ptr)
-        : num_elements(n), data(ptr),
+        : capacity(n), num_elements(capacity), data(ptr),
           pointers(
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  data, Pointers{}, ~0ul, num_elements)) {}
+                  data, Pointers{}, ~0ul, capacity)) {}
 
-    [[nodiscard]] static size_t getMemReq(size_t num_elements) {
+    [[nodiscard]] static size_t getMemReq(size_t capacity) {
         // Get proper begin alignment: the strictest (largest) alignment
         // requirement between all the types and the MIN_ALIGN
         alignas(getAlignment()) uint8_t dummy = 0;
@@ -386,7 +393,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         [[maybe_unused]] const auto pointers =
             makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
                 static_cast<void *>(&dummy), Pointers{}, std::move(space),
-                num_elements);
+                capacity);
 
         const size_t num_bytes = n - space;
         // Require a block of (M + 1) * alignment bytes, where M is an integer.
@@ -394,6 +401,15 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         // a strict enough alignment requirement.
         return num_bytes + bytesMissingFromAlignment(num_bytes) +
                getAlignment();
+    }
+
+    [[nodiscard]] uintptr_t getAlignedBlockSize() const {
+        return getMemReq(capacity) - getAlignment();
+    }
+
+    [[nodiscard]] uintptr_t getAlignmentBytes() const {
+        return static_cast<uintptr_t>(static_cast<uint8_t *>(pointers[0]) -
+                                      static_cast<uint8_t *>(data));
     }
 
     template <CompileTimeString CTS1, CompileTimeString CTS2> void swap() {
@@ -448,11 +464,94 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         fromRow<Variables...>(i, std::move(t));
     }
 
+    // TODO get vector of rows from wherever the data recides in
+    // if on device memory, copy to host, then create rows
+
     template <size_t MA, typename... Ts>
     friend std::ostream &operator<<(std::ostream &,
                                     const StructureOfArrays<MA, Ts...> &);
 
     HOST DEVICE size_t size() const { return num_elements; }
+
+    void decrease(size_t n) { num_elements -= std::min(num_elements, n); }
+
+    template <CompileTimeString Dst, CompileTimeString Src,
+              typename... AdditionalArgs>
+    void memcpy(auto (*f)(void *, const void *, size_t, AdditionalArgs...),
+                AdditionalArgs... args) {
+        // Copy data from internal src to internal dst pointer using the
+        // provided memcpy function
+        constexpr size_t dst_i =
+            IndexOfString<Dst, PairTraits<Variables>::name...>::i;
+        constexpr size_t src_i =
+            IndexOfString<Src, PairTraits<Variables>::name...>::i;
+        using DstType =
+            typename NthType<dst_i,
+                             typename PairTraits<Variables>::Type...>::Type;
+        using SrcType =
+            typename NthType<src_i,
+                             typename PairTraits<Variables>::Type...>::Type;
+
+        static_assert(IsSame<DstType, SrcType>::value,
+                      "Mismatched types for memcpy");
+
+        const size_t bytes = capacity * sizeof(DstType);
+        f(pointers[dst_i], pointers[src_i], bytes, args...);
+    }
+
+    template <CompileTimeString Dst, typename SrcType,
+              typename... AdditionalArgs>
+    void memcpy(const SrcType *src,
+                auto (*f)(void *, const void *, size_t, AdditionalArgs...),
+                AdditionalArgs... args) {
+        // Copy data from external src to internal dst pointer using the
+        // provided memcpy function
+        constexpr size_t dst_i =
+            IndexOfString<Dst, PairTraits<Variables>::name...>::i;
+        using DstType =
+            typename NthType<dst_i,
+                             typename PairTraits<Variables>::Type...>::Type;
+
+        static_assert(IsSame<DstType, SrcType>::value,
+                      "Mismatched types for memcpy");
+
+        const size_t bytes = capacity * sizeof(DstType);
+        f(pointers[dst_i], static_cast<const void *>(src), bytes, args...);
+    }
+
+    template <CompileTimeString Src, typename DstType,
+              typename... AdditionalArgs>
+    void memcpy(DstType *dst,
+                auto (*f)(void *, const void *, size_t, AdditionalArgs...),
+                AdditionalArgs... args) {
+        // Copy data from internal src to external dst pointer using the
+        // provided memcpy function
+        constexpr size_t src_i =
+            IndexOfString<Src, PairTraits<Variables>::name...>::i;
+        using SrcType =
+            typename NthType<src_i,
+                             typename PairTraits<Variables>::Type...>::Type;
+
+        static_assert(IsSame<SrcType, DstType>::value,
+                      "Mismatched types for memcpy");
+
+        const size_t bytes = capacity * sizeof(SrcType);
+        f(static_cast<void *>(dst), pointers[src_i], bytes, args...);
+    }
+
+    template <CompileTimeString Dst, typename... AdditionalArgs>
+    void memset(auto (*f)(void *, int, size_t, AdditionalArgs...), int value,
+                AdditionalArgs... args) {
+        // Set data at dst to some value
+        constexpr size_t dst_i =
+            IndexOfString<Dst, PairTraits<Variables>::name...>::i;
+        using TypeDst =
+            typename NthType<dst_i,
+                             typename PairTraits<Variables>::Type...>::Type;
+
+        const size_t bytes = capacity * sizeof(TypeDst);
+        f(pointers[dst_i], value, bytes, args...);
+    }
 
   private:
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
@@ -500,18 +599,17 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     template <size_t I, typename Head, typename... Tail>
     [[nodiscard]] static Pointers
     makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space,
-                        size_t num_elements) {
+                        size_t capacity) {
         constexpr size_t size_of_type = sizeof(Head);
         if (ptr) {
             ptr = std::align(getAlignment(), size_of_type, ptr, space);
             if (ptr) {
                 pointers[I] = ptr;
-                ptr = static_cast<void *>(static_cast<Head *>(ptr) +
-                                          num_elements);
-                space -= size_of_type * num_elements;
+                ptr = static_cast<void *>(static_cast<Head *>(ptr) + capacity);
+                space -= size_of_type * capacity;
 
                 return makeAlignedPointers<I + 1, Tail...>(
-                    ptr, pointers, std::move(space), num_elements);
+                    ptr, pointers, std::move(space), capacity);
             }
         }
 
@@ -572,8 +670,8 @@ std::ostream &operator<<(std::ostream &os,
 
     os << "Soa {\n  ";
     os << "num members: " << n << "\n  ";
-    os << "num elements: " << soa.num_elements << "\n  ";
-    os << "memory requirement (bytes): " << Soa::getMemReq(soa.num_elements)
+    os << "num elements: " << soa.capacity << "\n  ";
+    os << "memory requirement (bytes): " << Soa::getMemReq(soa.capacity)
        << "\n  ";
     os << "*data: " << soa.data << "\n  ";
     os << "*pointers[]: {\n    ";

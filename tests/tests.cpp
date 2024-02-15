@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <random>
 #include <vector>
 
 using namespace aosoa;
@@ -603,6 +604,137 @@ constexpr static Test tests[]{
          ASSERT((soa.get<"first", a>() == 1.0), "Value incorrect");
          ASSERT((soa.get<"first", b>() == 2.0), "Value incorrect");
          ASSERT((soa.get<"first", c>() == 3.0), "Value incorrect");
+     }},
+    {"AoSoa_memset",
+     [](Result &result) {
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         soa.memset<"third">(std::memset, 0xFF);
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             ASSERT(static_cast<uint32_t>(soa.get<"third">(i)) == 0xFFFFFFFF,
+                    "Value incorrect first");
+         }
+
+         soa.memset<"third">(std::memset, 0);
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             ASSERT(soa.get<"third">(i) == 0, "Value incorrect second");
+         }
+     }},
+    {"AoSoa_memcpy1",
+     [](Result &result) {
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         const std::vector<double> rands1([]() {
+             std::vector<double> vec(n);
+             std::random_device rd{};
+             std::mt19937 generator{rd()};
+             std::normal_distribution distribution{0.0, 1.0};
+             std::generate(vec.begin(), vec.end(),
+                           [&distribution, &generator]() {
+                               return distribution(generator);
+                           });
+             return vec;
+         }());
+
+         soa.memcpy<"first">(rands1.data(), std::memcpy);
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             ASSERT(soa.get<"first">(i) == rands1[i], "Incorret value first");
+         }
+
+         soa.memcpy<"second", "first">(std::memcpy);
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             ASSERT(soa.get<"second">(i) == rands1[i], "Incorret value second");
+         }
+
+         std::vector<double> rands2(n);
+         soa.memcpy<"second">(rands2.data(), std::memcpy);
+
+         for (size_t i = 0; i < soa.size(); i++) {
+             ASSERT(rands2[i] == rands1[i], "Incorret value rands2");
+         }
+     }},
+    {"AoSoa_decrease",
+     [](Result &result) {
+         constexpr size_t alignment = 16;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+         soa.decrease(n / 2);
+         ASSERT(soa.size() == n / 2, "First decrease incorrect");
+         soa.decrease(n / 2);
+         ASSERT(soa.size() == 0, "Second decrease incorrect");
+         soa.decrease(n / 2);
+         ASSERT(soa.size() == 0, "Third decrease incorrect");
+     }},
+    {"AoSoa_alignment_bytes",
+     [](Result &result) {
+         constexpr size_t alignment = 64;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         const uintptr_t address = reinterpret_cast<uintptr_t>(bytes.data());
+         const uintptr_t over_alignment = address & (alignment - 1);
+         const uintptr_t missing =
+             (alignment - over_alignment) & (alignment - 1);
+
+         ASSERT(soa.getAlignmentBytes() == missing,
+                "Incorrectly computed alignment bytes");
+     }},
+    {"AoSoa_aligned_block_size",
+     [](Result &result) {
+         constexpr size_t alignment = 64;
+         constexpr size_t n = 1000;
+         typedef StructureOfArrays<
+             alignment, Variable<double, "first">, Variable<double, "second">,
+             Variable<int, "third">, Variable<bool, "fourth">,
+             Variable<float, "fifth">>
+             Soa;
+
+         const size_t mem_req = Soa::getMemReq(n);
+         std::vector<uint8_t> bytes(mem_req);
+         Soa soa(n, static_cast<void *>(bytes.data()));
+
+         ASSERT(alignment + soa.getAlignedBlockSize() == Soa::getMemReq(n),
+                "Incorrectly computed alignment bytes");
      }},
 };
 
