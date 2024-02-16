@@ -25,7 +25,6 @@
 #include <ostream>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #ifdef __NVCC__
 #define HOST __host__
@@ -328,7 +327,7 @@ struct Row<Var1, Var2, Vars...> {
                   "Found a clashing name at the index I of EqualIndices<I, J>");
 
   public:
-    // This helps StructureOfArrays assert it's names are unique by asserting
+    // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
         EqualIndices<index_of_var1, num_strings>::value;
@@ -340,48 +339,15 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
     return row.output(os) << "\n}";
 }
 
-/*
- * StructureOfArrays helps store and access data in a structure of arrays layout
- *
- * Instead of storing N instantiations of a structure with M members in a single
- * array, it's more cache and GPU friendly to store the values of the struct in
- * M separate arrays with N values in each.
- *
- * However, it's sometimes convenient or necessary to access/inspect all (or
- * some) members of one particular instantiation of the struct at one go. The
- * Row type defined above gives access to the values in this way.
- *
- * One can access values stored in the StructureOfArrays either by getting a
- * full row, by getting an array of some particular members or by getting a
- * single value from an array.
- * */
-
 template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
-    // TODO: Think through
-    // Are there two use cases mixed in here?
-    // One use case is about making data movement and usage easier on the host
-    // Another is about making data access easy and fast on GPUs and/or cache
-    // friendly on CPUs
-    //
-    // Use case 1
-    // - Halutaan siirtää dataa kahden pointterin välillä
-    // - Halutaan serialisoida Aos-muodossa tiedostoon
-    // - Halutaan initialisoidan Aos-muotoisen vektorin perusteella
-    // - Halutaan kopsata yhdellä kertaa kaikki GPU:lta
-    // - Halutaan muuttaa kokoa ja seurata sen muutosta (pienentää)
-    // -
-    //
-    // Use case 2
-    // - Halutaan muistista peräkkäisiä arvoja helposti (get(i))
-    // - Halutaan muuttaa kokoa? (Pienentää atomiceilla?)
-    // - Halutaan kirjoittaa yksittäisiä perättäisiä arvoja helposti (set(i))
-    // - Halutaan luupata vain koon verran (size())
-    // -
-    //
-    // One use case is about accessing the data on the same memory space it
-    // actually recides in Another use case is moving that data easily between
-    // two memory spaces
-    using FullRow = aosoa::Row<Variables...>;
+  private:
+    static_assert(aosoa::Row<Variables...>::unique_names,
+                  "StructureOfArrays has clashing names");
+
+    static constexpr size_t num_pointers = sizeof...(Variables);
+    using Pointers = Array<void *, num_pointers>;
+
+  public:
     template <CompileTimeString Cts> struct GetType {
         static constexpr size_t i =
             IndexOfString<Cts, PairTraits<Variables>::name...>::i;
@@ -389,27 +355,108 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
             typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
     };
 
+    using FullRow = aosoa::Row<Variables...>;
+
+    // Use accessor wherever the data recides to access the elements
+    struct Accessor {
+      private:
+        template <size_t I, typename... T> friend struct StructureOfArrays;
+        size_t num_elements = 0;
+        Pointers pointers = {};
+
+      public:
+        HOST DEVICE Accessor() {}
+        HOST DEVICE Accessor(size_t n, const Pointers &p)
+            : num_elements(n), pointers(p) {}
+
+        template <CompileTimeString Cts>
+        HOST DEVICE [[nodiscard]] auto get() const {
+            using G = GetType<Cts>;
+            return static_cast<G::Type *>(pointers[G::i]);
+        }
+
+        template <CompileTimeString Cts, size_t I>
+        HOST DEVICE [[nodiscard]] auto get() const {
+            return get<Cts>()[I];
+        }
+
+        template <CompileTimeString Cts>
+        HOST DEVICE [[nodiscard]] auto get(size_t i) const {
+            return get<Cts>()[i];
+        }
+
+        HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
+            return toRow<Variables...>(i);
+        }
+
+        template <CompileTimeString Cts, typename T>
+        HOST DEVICE void set(size_t i, T value) const {
+            get<Cts>()[i] = value;
+        }
+
+        HOST DEVICE void set(size_t i, const FullRow &t) const {
+            fromRow<Variables...>(i, t);
+        }
+
+        HOST DEVICE void set(size_t i, FullRow &&t) const {
+            fromRow<Variables...>(i, std::move(t));
+        }
+
+        HOST DEVICE size_t size() const { return num_elements; }
+
+      private:
+        template <typename Head, typename... Tail>
+        [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
+            using H = PairTraits<Head>;
+            if constexpr (sizeof...(Tail) > 0) {
+                return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
+            } else {
+                return Row<Head>(get<H::name>(i));
+            }
+        }
+
+        template <typename Head, typename... Tail>
+        HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
+            using H = PairTraits<Head>;
+            set<H::name, typename H::Type>(i, row.template get<H::name>());
+            if constexpr (sizeof...(Tail) > 0) {
+                fromRow<Tail...>(i, row);
+            }
+        }
+
+        template <typename Head, typename... Tail>
+        HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
+            using H = PairTraits<Head>;
+            set<H::name, typename H::Type>(i, row.template get<H::name>());
+            if constexpr (sizeof...(Tail) > 0) {
+                fromRow<Tail...>(i, std::move(row));
+            }
+        }
+    };
+
+    Accessor accessor = {};
+
   private:
-    static_assert(FullRow::unique_names,
-                  "StructureOfArrays struct has clashing names");
-
-    const size_t max_num_elements = 0;
-    // The size may decrease, but not increase
-    size_t num_elements_per_array = 0;
-    void *const data = nullptr;
-    static constexpr size_t num_pointers = sizeof...(Variables);
-
-    using Pointers = Array<void *, num_pointers>;
-    Pointers pointers;
+    const size_t max_num_elements;
+    void *data = nullptr;
 
   public:
-    HOST DEVICE constexpr StructureOfArrays() {}
+    StructureOfArrays(size_t n) : max_num_elements(n) {}
 
-    StructureOfArrays(size_t n, void *ptr)
-        : max_num_elements(n), num_elements_per_array(n), data(ptr),
-          pointers(
-              makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  data, Pointers{}, ~0ul, max_num_elements)) {}
+    ~StructureOfArrays() {
+        // TODO: deallocate
+        data = nullptr;
+        accessor.pointers = Pointers{};
+    }
+
+    void allocate(void *ptr) {
+        // TODO: allocate data
+        data = ptr;
+        accessor = Accessor{
+            max_num_elements,
+            makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
+                data, Pointers{}, ~0ul, max_num_elements)};
+    }
 
     [[nodiscard]] static size_t getMemReq(size_t n) {
         // Get proper begin alignment: the strictest (largest) alignment
@@ -430,7 +477,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
-        return capacity() * sizeof(typename GetType<Cts>::Type);
+        return max_num_elements * sizeof(typename GetType<Cts>::Type);
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
@@ -440,8 +487,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     [[nodiscard]] uintptr_t getAlignmentBytes() const {
         // How many bytes from the beginning of the data pointer are unused due
         // to alignment requirement
-        return static_cast<uintptr_t>(static_cast<uint8_t *>(pointers[0]) -
-                                      static_cast<uint8_t *>(data));
+        return static_cast<uintptr_t>(
+            static_cast<uint8_t *>(accessor.pointers[0]) -
+            static_cast<uint8_t *>(data));
     }
 
     template <CompileTimeString Cts1, CompileTimeString Cts2> void swap() {
@@ -451,48 +499,11 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         static_assert(IsSame<typename G1::Type, typename G2::Type>::value,
                       "Mismatched types for swap");
 
-        std::swap(pointers[G1::i], pointers[G2::i]);
-    }
-
-    template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] auto get() const {
-        using G = GetType<Cts>;
-        return static_cast<G::Type *>(pointers[G::i]);
-    }
-
-    template <CompileTimeString Cts, size_t I>
-    HOST DEVICE [[nodiscard]] auto get() const {
-        return get<Cts>()[I];
-    }
-
-    template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] auto get(size_t i) const {
-        return get<Cts>()[i];
-    }
-
-    HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
-        return toRow<Variables...>(i);
-    }
-
-    template <CompileTimeString Cts, typename T>
-    HOST DEVICE void set(size_t i, T value) const {
-        get<Cts>()[i] = value;
-    }
-
-    HOST DEVICE void set(size_t i, const FullRow &t) const {
-        fromRow<Variables...>(i, t);
-    }
-
-    HOST DEVICE void set(size_t i, FullRow &&t) const {
-        fromRow<Variables...>(i, std::move(t));
+        std::swap(accessor.pointers[G1::i], accessor.pointers[G2::i]);
     }
 
     // TODO get vector of rows from wherever the data recides in
     // if on device memory, copy to host, then create rows
-    std::vector<FullRow> getRows() const {
-        // If possible, pass default copy/memset functions to constructor
-        // Then those can be used here
-    }
 
     // Internal to internal
     template <CompileTimeString Dst, CompileTimeString Src, typename T,
@@ -503,7 +514,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using Gs = GetType<Src>;
         static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
                       "Mismatched types for memcpy");
-        return f(pointers[Gd::i], pointers[Gs::i], getMemReq<Dst>(), args...);
+        return f(accessor.pointers[Gd::i], accessor.pointers[Gs::i],
+                 getMemReq<Dst>(), args...);
     }
 
     // External to internal
@@ -515,7 +527,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using G = GetType<Dst>;
         static_assert(IsSame<typename G::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return f(pointers[G::i], static_cast<const void *>(src),
+        return f(accessor.pointers[G::i], static_cast<const void *>(src),
                  getMemReq<Dst>(), args...);
     }
 
@@ -528,25 +540,15 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using G = GetType<Src>;
         static_assert(IsSame<typename G::Type, DstType>::value,
                       "Mismatched types for memcpy");
-        return f(static_cast<void *>(dst), pointers[G::i], getMemReq<Src>(),
-                 args...);
+        return f(static_cast<void *>(dst), accessor.pointers[G::i],
+                 getMemReq<Src>(), args...);
     }
 
     template <CompileTimeString Dst, typename T, typename... AdditionalArgs>
     T memset(T (*f)(void *, int, size_t, AdditionalArgs...), int value,
              AdditionalArgs... args) {
         using G = GetType<Dst>;
-        return f(pointers[G::i], value, getMemReq<Dst>(), args...);
-    }
-
-    template <size_t MA, typename... Ts>
-    friend std::ostream &operator<<(std::ostream &,
-                                    const StructureOfArrays<MA, Ts...> &);
-
-    HOST DEVICE size_t size() const { return num_elements_per_array; }
-    HOST DEVICE size_t capacity() const { return max_num_elements; }
-    void decrease(size_t n) {
-        num_elements_per_array -= std::min(num_elements_per_array, n);
+        return f(accessor.pointers[G::i], value, getMemReq<Dst>(), args...);
     }
 
   private:
@@ -611,70 +613,5 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
 
         return Pointers{};
     }
-
-    template <typename Head, typename... Tail>
-    [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
-        using H = PairTraits<Head>;
-        if constexpr (sizeof...(Tail) > 0) {
-            return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
-        } else {
-            return Row<Head>(get<H::name>(i));
-        }
-    }
-
-    template <typename Head, typename... Tail>
-    HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
-        using H = PairTraits<Head>;
-        set<H::name, typename H::Type>(i, row.template get<H::name>());
-        if constexpr (sizeof...(Tail) > 0) {
-            fromRow<Tail...>(i, row);
-        }
-    }
-
-    template <typename Head, typename... Tail>
-    HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
-        using H = PairTraits<Head>;
-        set<H::name, typename H::Type>(i, row.template get<H::name>());
-        if constexpr (sizeof...(Tail) > 0) {
-            fromRow<Tail...>(i, std::move(row));
-        }
-    }
 };
-
-template <size_t N, size_t I, typename Head, typename... Tail>
-std::ostream &outputPointers(std::ostream &os,
-                             const Array<void *, N> &pointers) {
-    using H = PairTraits<Head>;
-    os << typeid(typename H::Type).name() << " *" << H::name.str << ": "
-       << pointers[I];
-
-    if constexpr (sizeof...(Tail) == 0) {
-        os << "\n  }";
-        return os;
-    } else {
-        os << "\n    ";
-
-        return outputPointers<N, I + 1, Tail...>(os, pointers);
-    }
-}
-
-template <size_t A, typename... Variables>
-std::ostream &operator<<(std::ostream &os,
-                         const StructureOfArrays<A, Variables...> &soa) {
-    typedef StructureOfArrays<A, Variables...> Soa;
-    constexpr size_t n = Soa::num_pointers;
-
-    os << "Soa {\n  ";
-    os << "num members: " << n << "\n  ";
-    os << "max num elements: " << soa.max_num_elements << "\n  ";
-    os << "num elements: " << soa.num_elements_per_array << "\n  ";
-    os << "memory requirement (bytes): " << Soa::getMemReq(soa.max_num_elements)
-       << "\n  ";
-    os << "*data: " << soa.data << "\n  ";
-    os << "*pointers[]: {\n    ";
-    outputPointers<n, 0, Variables...>(os, soa.pointers);
-    os << "\n}";
-
-    return os;
-}
 } // namespace aosoa
