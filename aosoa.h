@@ -114,7 +114,7 @@ consteval auto operator+(CompileTimeString<N> lhs, const char (&rhs)[M + 1]) {
 template <size_t N>
 CompileTimeString(const char (&)[N]) -> CompileTimeString<N - 1>;
 
-template <CompileTimeString CTS> constexpr auto operator""_cts() { return CTS; }
+template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
 } // namespace
 
 namespace aosoa {
@@ -126,10 +126,10 @@ namespace {
 // Used to extract the type and the name from a Variable<typename,
 // CompileTimeString>
 template <typename> struct PairTraits;
-template <typename T, CompileTimeString CTS>
-struct PairTraits<aosoa::Variable<T, CTS>> {
+template <typename T, CompileTimeString Cts>
+struct PairTraits<aosoa::Variable<T, Cts>> {
     using Type = T;
-    static constexpr CompileTimeString name = CTS;
+    static constexpr CompileTimeString name = Cts;
 };
 
 // Get the Nth type from a parameter pack of types
@@ -200,23 +200,23 @@ template <typename Var> struct Row<Var> {
     HOST DEVICE constexpr Row(const Row<Var> &row) : head(row.head) {}
     HOST DEVICE constexpr Row(Type t) : head(t) {}
 
-    template <CompileTimeString CTS>
+    template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] constexpr const auto &get() const {
-        static_assert(EqualStrings<name, CTS>::value,
+        static_assert(EqualStrings<name, Cts>::value,
                       "No member with such name");
         return head;
     }
 
-    template <CompileTimeString CTS>
+    template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] constexpr auto &get() {
-        static_assert(EqualStrings<name, CTS>::value,
+        static_assert(EqualStrings<name, Cts>::value,
                       "No member with such name");
         return head;
     }
 
-    template <CompileTimeString CTS, typename U>
+    template <CompileTimeString Cts, typename U>
     HOST DEVICE constexpr void set(U u) {
-        get<CTS>() = u;
+        get<Cts>() = u;
     }
 
     template <typename... Ts>
@@ -260,27 +260,27 @@ struct Row<Var1, Var2, Vars...> {
     template <typename... Args>
     HOST DEVICE constexpr Row(Type t, Args... args) : head(t), tail(args...) {}
 
-    template <CompileTimeString CTS>
+    template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] constexpr const auto &get() const {
-        if constexpr (CTS == name) {
+        if constexpr (Cts == name) {
             return head;
         } else {
-            return tail.template get<CTS>();
+            return tail.template get<Cts>();
         }
     }
 
-    template <CompileTimeString CTS>
+    template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] constexpr auto &get() {
-        if constexpr (CTS == name) {
+        if constexpr (Cts == name) {
             return head;
         } else {
-            return tail.template get<CTS>();
+            return tail.template get<Cts>();
         }
     }
 
-    template <CompileTimeString CTS, typename U>
+    template <CompileTimeString Cts, typename U>
     HOST DEVICE constexpr void set(U u) {
-        get<CTS>() = u;
+        get<Cts>() = u;
     }
 
     template <typename... Ts>
@@ -361,14 +361,21 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     // Only on host, make sure no deallocation happens on device destuctor (how?
     // separate destructors?) When/how device destructor is called? Capacity and
     // size must be mutable, so the size can grow/decrease
+
     using FullRow = aosoa::Row<Variables...>;
+
+    template <CompileTimeString Cts> struct GetType {
+        static constexpr size_t i =
+            IndexOfString<Cts, PairTraits<Variables>::name...>::i;
+        using Type =
+            typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
+    };
 
   private:
     static_assert(FullRow::unique_names,
                   "StructureOfArrays struct has clashing names");
 
-    // capacity is the maximum number of elements held by each pointer
-    const size_t capacity = 0;
+    const size_t max_num_elements = 0;
     size_t num_elements = 0;
     void *const data = nullptr;
     static constexpr size_t num_pointers = sizeof...(Variables);
@@ -378,13 +385,14 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
 
   public:
     HOST DEVICE constexpr StructureOfArrays() {}
+
     StructureOfArrays(size_t n, void *ptr)
-        : capacity(n), num_elements(capacity), data(ptr),
+        : max_num_elements(n), num_elements(max_num_elements), data(ptr),
           pointers(
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  data, Pointers{}, ~0ul, capacity)) {}
+                  data, Pointers{}, ~0ul, max_num_elements)) {}
 
-    [[nodiscard]] static size_t getMemReq(size_t capacity) {
+    [[nodiscard]] static size_t getMemReq(size_t num_elements) {
         // Get proper begin alignment: the strictest (largest) alignment
         // requirement between all the types and the MIN_ALIGN
         alignas(getAlignment()) uint8_t dummy = 0;
@@ -393,7 +401,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         [[maybe_unused]] const auto pointers =
             makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
                 static_cast<void *>(&dummy), Pointers{}, std::move(space),
-                capacity);
+                num_elements);
 
         const size_t num_bytes = n - space;
         // Require a block of (M + 1) * alignment bytes, where M is an integer.
@@ -404,56 +412,49 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
-        return getMemReq(capacity) - getAlignment();
+        return getMemReq(max_num_elements) - getAlignment();
     }
 
     [[nodiscard]] uintptr_t getAlignmentBytes() const {
+        // How many bytes from the beginning of the data pointer are unused due
+        // to alignment requirement
         return static_cast<uintptr_t>(static_cast<uint8_t *>(pointers[0]) -
                                       static_cast<uint8_t *>(data));
     }
 
-    template <CompileTimeString CTS1, CompileTimeString CTS2> void swap() {
-        constexpr size_t i =
-            IndexOfString<CTS1, PairTraits<Variables>::name...>::i;
-        constexpr size_t j =
-            IndexOfString<CTS2, PairTraits<Variables>::name...>::i;
-        using TypeI =
-            typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
-        using TypeJ =
-            typename NthType<j, typename PairTraits<Variables>::Type...>::Type;
+    template <CompileTimeString Cts1, CompileTimeString Cts2> void swap() {
+        using G1 = GetType<Cts1>;
+        using G2 = GetType<Cts2>;
 
-        static_assert(IsSame<TypeI, TypeJ>::value, "Mismatched types for swap");
+        static_assert(IsSame<typename G1::Type, typename G2::Type>::value,
+                      "Mismatched types for swap");
 
-        std::swap(pointers[i], pointers[j]);
+        std::swap(pointers[G1::i], pointers[G2::i]);
     }
 
-    template <CompileTimeString CTS>
+    template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] auto get() const {
-        constexpr size_t i =
-            IndexOfString<CTS, PairTraits<Variables>::name...>::i;
-        using Type =
-            typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
-
-        return static_cast<Type *>(pointers[i]);
+        using G = GetType<Cts>;
+        return static_cast<G::Type *>(pointers[G::i]);
     }
 
-    template <CompileTimeString CTS, size_t I>
+    template <CompileTimeString Cts, size_t I>
     HOST DEVICE [[nodiscard]] auto get() const {
-        return get<CTS>()[I];
+        return get<Cts>()[I];
     }
 
-    template <CompileTimeString CTS>
+    template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] auto get(size_t i) const {
-        return get<CTS>()[i];
+        return get<Cts>()[i];
     }
 
     HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
         return toRow<Variables...>(i);
     }
 
-    template <CompileTimeString CTS, typename T>
+    template <CompileTimeString Cts, typename T>
     HOST DEVICE void set(size_t i, T value) const {
-        get<CTS>()[i] = value;
+        get<Cts>()[i] = value;
     }
 
     HOST DEVICE void set(size_t i, const FullRow &t) const {
@@ -467,91 +468,67 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     // TODO get vector of rows from wherever the data recides in
     // if on device memory, copy to host, then create rows
 
+    // Internal to internal
+    template <CompileTimeString Dst, CompileTimeString Src, typename T,
+              typename... AdditionalArgs>
+    T memcpy(T (*f)(void *, const void *, size_t, AdditionalArgs...),
+             AdditionalArgs... args) {
+        using Gd = GetType<Dst>;
+        using Gs = GetType<Src>;
+
+        static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
+                      "Mismatched types for memcpy");
+
+        const size_t bytes = max_num_elements * sizeof(typename Gd::Type);
+        return f(pointers[Gd::i], pointers[Gs::i], bytes, args...);
+    }
+
+    // External to internal
+    template <CompileTimeString Dst, typename SrcType, typename T,
+              typename... AdditionalArgs>
+    T memcpy(const SrcType *src,
+             T (*f)(void *, const void *, size_t, AdditionalArgs...),
+             AdditionalArgs... args) {
+        using G = GetType<Dst>;
+
+        static_assert(IsSame<typename G::Type, SrcType>::value,
+                      "Mismatched types for memcpy");
+
+        const size_t bytes = max_num_elements * sizeof(typename G::Type);
+        return f(pointers[G::i], static_cast<const void *>(src), bytes,
+                 args...);
+    }
+
+    // Internal to external
+    template <CompileTimeString Src, typename DstType, typename T,
+              typename... AdditionalArgs>
+    T memcpy(DstType *dst,
+             T (*f)(void *, const void *, size_t, AdditionalArgs...),
+             AdditionalArgs... args) {
+        using G = GetType<Src>;
+
+        static_assert(IsSame<typename G::Type, DstType>::value,
+                      "Mismatched types for memcpy");
+
+        const size_t bytes = max_num_elements * sizeof(typename G::Type);
+        return f(static_cast<void *>(dst), pointers[G::i], bytes, args...);
+    }
+
+    template <CompileTimeString Dst, typename T, typename... AdditionalArgs>
+    T memset(T (*f)(void *, int, size_t, AdditionalArgs...), int value,
+             AdditionalArgs... args) {
+        using G = GetType<Dst>;
+        const size_t bytes = max_num_elements * sizeof(typename G::Type);
+        return f(pointers[G::i], value, bytes, args...);
+    }
+
     template <size_t MA, typename... Ts>
     friend std::ostream &operator<<(std::ostream &,
                                     const StructureOfArrays<MA, Ts...> &);
 
     HOST DEVICE size_t size() const { return num_elements; }
-
+    HOST DEVICE size_t capacity() const { return max_num_elements; }
     void decrease(size_t n) { num_elements -= std::min(num_elements, n); }
-
-    template <CompileTimeString Dst, CompileTimeString Src,
-              typename... AdditionalArgs>
-    void memcpy(auto (*f)(void *, const void *, size_t, AdditionalArgs...),
-                AdditionalArgs... args) {
-        // Copy data from internal src to internal dst pointer using the
-        // provided memcpy function
-        constexpr size_t dst_i =
-            IndexOfString<Dst, PairTraits<Variables>::name...>::i;
-        constexpr size_t src_i =
-            IndexOfString<Src, PairTraits<Variables>::name...>::i;
-        using DstType =
-            typename NthType<dst_i,
-                             typename PairTraits<Variables>::Type...>::Type;
-        using SrcType =
-            typename NthType<src_i,
-                             typename PairTraits<Variables>::Type...>::Type;
-
-        static_assert(IsSame<DstType, SrcType>::value,
-                      "Mismatched types for memcpy");
-
-        const size_t bytes = capacity * sizeof(DstType);
-        f(pointers[dst_i], pointers[src_i], bytes, args...);
-    }
-
-    template <CompileTimeString Dst, typename SrcType,
-              typename... AdditionalArgs>
-    void memcpy(const SrcType *src,
-                auto (*f)(void *, const void *, size_t, AdditionalArgs...),
-                AdditionalArgs... args) {
-        // Copy data from external src to internal dst pointer using the
-        // provided memcpy function
-        constexpr size_t dst_i =
-            IndexOfString<Dst, PairTraits<Variables>::name...>::i;
-        using DstType =
-            typename NthType<dst_i,
-                             typename PairTraits<Variables>::Type...>::Type;
-
-        static_assert(IsSame<DstType, SrcType>::value,
-                      "Mismatched types for memcpy");
-
-        const size_t bytes = capacity * sizeof(DstType);
-        f(pointers[dst_i], static_cast<const void *>(src), bytes, args...);
-    }
-
-    template <CompileTimeString Src, typename DstType,
-              typename... AdditionalArgs>
-    void memcpy(DstType *dst,
-                auto (*f)(void *, const void *, size_t, AdditionalArgs...),
-                AdditionalArgs... args) {
-        // Copy data from internal src to external dst pointer using the
-        // provided memcpy function
-        constexpr size_t src_i =
-            IndexOfString<Src, PairTraits<Variables>::name...>::i;
-        using SrcType =
-            typename NthType<src_i,
-                             typename PairTraits<Variables>::Type...>::Type;
-
-        static_assert(IsSame<SrcType, DstType>::value,
-                      "Mismatched types for memcpy");
-
-        const size_t bytes = capacity * sizeof(SrcType);
-        f(static_cast<void *>(dst), pointers[src_i], bytes, args...);
-    }
-
-    template <CompileTimeString Dst, typename... AdditionalArgs>
-    void memset(auto (*f)(void *, int, size_t, AdditionalArgs...), int value,
-                AdditionalArgs... args) {
-        // Set data at dst to some value
-        constexpr size_t dst_i =
-            IndexOfString<Dst, PairTraits<Variables>::name...>::i;
-        using TypeDst =
-            typename NthType<dst_i,
-                             typename PairTraits<Variables>::Type...>::Type;
-
-        const size_t bytes = capacity * sizeof(TypeDst);
-        f(pointers[dst_i], value, bytes, args...);
-    }
 
   private:
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
@@ -599,17 +576,18 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     template <size_t I, typename Head, typename... Tail>
     [[nodiscard]] static Pointers
     makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space,
-                        size_t capacity) {
+                        size_t num_elements) {
         constexpr size_t size_of_type = sizeof(Head);
         if (ptr) {
             ptr = std::align(getAlignment(), size_of_type, ptr, space);
             if (ptr) {
                 pointers[I] = ptr;
-                ptr = static_cast<void *>(static_cast<Head *>(ptr) + capacity);
-                space -= size_of_type * capacity;
+                ptr = static_cast<void *>(static_cast<Head *>(ptr) +
+                                          num_elements);
+                space -= size_of_type * num_elements;
 
                 return makeAlignedPointers<I + 1, Tail...>(
-                    ptr, pointers, std::move(space), capacity);
+                    ptr, pointers, std::move(space), num_elements);
             }
         }
 
@@ -670,8 +648,9 @@ std::ostream &operator<<(std::ostream &os,
 
     os << "Soa {\n  ";
     os << "num members: " << n << "\n  ";
-    os << "num elements: " << soa.capacity << "\n  ";
-    os << "memory requirement (bytes): " << Soa::getMemReq(soa.capacity)
+    os << "max num elements: " << soa.max_num_elements << "\n  ";
+    os << "num elements: " << soa.num_elements << "\n  ";
+    os << "memory requirement (bytes): " << Soa::getMemReq(soa.max_num_elements)
        << "\n  ";
     os << "*data: " << soa.data << "\n  ";
     os << "*pointers[]: {\n    ";
