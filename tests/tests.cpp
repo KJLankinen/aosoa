@@ -21,9 +21,10 @@ void soa() {
     std::cout << "mem req: " << mem_req << std::endl;
 
     std::vector<uint8_t> memory(mem_req);
-    Soa thingie(n);
+    Soa::Accessor accessor;
+    Soa thingie(n, &accessor);
     thingie.allocate(memory.data());
-    auto accessor = thingie.accessor;
+    thingie.update();
 
     bool *is_visible = accessor.get<"is_visible">();
     float *radii = accessor.get<"radius">();
@@ -37,12 +38,16 @@ void soa() {
         num_hits[i] = -static_cast<int>(i);
     }
 
+    thingie.update();
+
     std::cout << accessor.get<"is_visible">(n / 2 - 1) << " "
               << accessor.get<"is_visible">(n / 2) << " "
               << accessor.get<"radius">(n / 2 - 1) << " "
               << accessor.get<"radius">(n / 2) << std::endl;
 
     accessor.set<"radius">(4, 1338.0f);
+    thingie.update();
+
     std::cout << accessor.get<"radius2">(4) << " " << accessor.get<"radius">(4)
               << std::endl;
 
@@ -55,6 +60,7 @@ void soa() {
     }
 
     accessor.set(2, Soa::FullRow(true, 1337.0f, 1337.0, -12));
+    thingie.update();
     std::cout << accessor2.get(2) << std::endl;
 }
 
@@ -346,15 +352,17 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa a(n);
-         a.allocate(static_cast<void *>(bytes.data()));
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
+         soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          const std::array<void *, 5> pointers = {
-             static_cast<void *>(a.accessor.get<"first">()),
-             static_cast<void *>(a.accessor.get<"second">()),
-             static_cast<void *>(a.accessor.get<"third">()),
-             static_cast<void *>(a.accessor.get<"fourth">()),
-             static_cast<void *>(a.accessor.get<"fifth">()),
+             static_cast<void *>(accessor.get<"first">()),
+             static_cast<void *>(accessor.get<"second">()),
+             static_cast<void *>(accessor.get<"third">()),
+             static_cast<void *>(accessor.get<"fourth">()),
+             static_cast<void *>(accessor.get<"fifth">()),
          };
 
          constexpr size_t max = ~0ul;
@@ -401,15 +409,17 @@ constexpr static Test tests[]{
          const size_t mem_req = Soa::getMemReq(n);
          ASSERT(mem_req == 18008, "Memory requirement incorrect");
          std::vector<uint8_t> bytes(mem_req);
-         Soa a(n);
-         a.allocate(static_cast<void *>(bytes.data()));
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
+         soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          const std::array<uintptr_t, 5> pointers = {
-             reinterpret_cast<uintptr_t>(a.accessor.get<"first">()),
-             reinterpret_cast<uintptr_t>(a.accessor.get<"second">()),
-             reinterpret_cast<uintptr_t>(a.accessor.get<"third">()),
-             reinterpret_cast<uintptr_t>(a.accessor.get<"fourth">()),
-             reinterpret_cast<uintptr_t>(a.accessor.get<"fifth">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"first">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"second">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"third">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"fourth">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"fifth">()),
          };
 
          for (auto pointer : pointers) {
@@ -447,19 +457,22 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa a(n);
-         a.allocate(static_cast<void *>(bytes.data()));
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
+         soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          const std::array<uintptr_t, 2> original_pointers = {
-             reinterpret_cast<uintptr_t>(a.accessor.get<"first">()),
-             reinterpret_cast<uintptr_t>(a.accessor.get<"second">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"first">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"second">()),
          };
 
-         a.swap<"first", "second">();
+         soa.swap<"first", "second">();
+         soa.update();
 
          const std::array<uintptr_t, 2> pointers = {
-             reinterpret_cast<uintptr_t>(a.accessor.get<"first">()),
-             reinterpret_cast<uintptr_t>(a.accessor.get<"second">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"first">()),
+             reinterpret_cast<uintptr_t>(accessor.get<"second">()),
          };
 
          ASSERT(original_pointers[0] == pointers[1],
@@ -480,25 +493,28 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          constexpr size_t a = 0;
          constexpr size_t b = 32;
          constexpr size_t c = 555;
 
-         soa.accessor.set(a, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
-         soa.accessor.set(b, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
-         soa.accessor.set(c, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+         accessor.set(a, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+         accessor.set(b, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+         accessor.set(c, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
+         soa.update();
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
+         for (size_t i = 0; i < accessor.size(); i++) {
              const bool is_default = i != a && i != b && i != c;
              if (is_default) {
-                 ASSERT(soa.accessor.get(i) ==
+                 ASSERT(accessor.get(i) ==
                             Soa::FullRow(0.0, 0.0, 0, false, 0.0f),
                         "Incorrect default value");
              } else {
-                 ASSERT(soa.accessor.get(i) ==
+                 ASSERT(accessor.get(i) ==
                             Soa::FullRow(1.0, 2.0, 3, true, 5.0f),
                         "Incorrect default value");
              }
@@ -517,40 +533,41 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          constexpr size_t a = 0;
          constexpr size_t b = 2;
          constexpr size_t c = 55;
 
-         soa.accessor.set<"first">(a, 5.0);
-         soa.accessor.set<"first">(b, 666.666);
-         soa.accessor.set<"first">(c, 321);
+         accessor.set<"first">(a, 5.0);
+         accessor.set<"first">(b, 666.666);
+         accessor.set<"first">(c, 321);
+         soa.update();
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
+         for (size_t i = 0; i < accessor.size(); i++) {
              const bool is_default = i != a && i != b && i != c;
              if (is_default) {
-                 ASSERT(soa.accessor.get<"first">(i) == 0.0,
+                 ASSERT(accessor.get<"first">(i) == 0.0,
                         "Incorrect default value");
              } else if (i == a) {
-                 ASSERT(soa.accessor.get<"first">(i) == 5.0, "Incorrect value");
+                 ASSERT(accessor.get<"first">(i) == 5.0, "Incorrect value");
              } else if (i == b) {
-                 ASSERT(soa.accessor.get<"first">(i) == 666.666,
-                        "Incorrect value");
+                 ASSERT(accessor.get<"first">(i) == 666.666, "Incorrect value");
              } else if (i == c) {
-                 ASSERT(soa.accessor.get<"first">(i) == 321, "Incorrect value");
+                 ASSERT(accessor.get<"first">(i) == 321, "Incorrect value");
              }
          }
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
-             ASSERT(soa.accessor.get<"second">(i) == 0.0,
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(accessor.get<"second">(i) == 0.0,
                     "Incorrect default value");
-             ASSERT(soa.accessor.get<"third">(i) == 0,
+             ASSERT(accessor.get<"third">(i) == 0, "Incorrect default value");
+             ASSERT(accessor.get<"fourth">(i) == false,
                     "Incorrect default value");
-             ASSERT(soa.accessor.get<"fourth">(i) == false,
-                    "Incorrect default value");
-             ASSERT(soa.accessor.get<"fifth">(i) == 0.0f,
+             ASSERT(accessor.get<"fifth">(i) == 0.0f,
                     "Incorrect default value");
          }
      }},
@@ -566,21 +583,24 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          constexpr size_t a = 0;
          constexpr size_t b = 2;
          constexpr size_t c = 55;
 
-         auto value = soa.accessor.get<"first">();
+         auto value = accessor.get<"first">();
          value[a] = 1.0;
          value[b] = 2.0;
          value[c] = 3.0;
+         soa.update();
 
-         ASSERT(soa.accessor.get<"first">(a) == 1.0, "Value incorrect");
-         ASSERT(soa.accessor.get<"first">(b) == 2.0, "Value incorrect");
-         ASSERT(soa.accessor.get<"first">(c) == 3.0, "Value incorrect");
+         ASSERT(accessor.get<"first">(a) == 1.0, "Value incorrect");
+         ASSERT(accessor.get<"first">(b) == 2.0, "Value incorrect");
+         ASSERT(accessor.get<"first">(c) == 3.0, "Value incorrect");
      }},
     {"AoSoa_get_set4",
      [](Result &result) {
@@ -594,21 +614,24 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          constexpr size_t a = 0;
          constexpr size_t b = 2;
          constexpr size_t c = 55;
 
-         auto value = soa.accessor.get<"first">();
+         auto value = accessor.get<"first">();
          value[a] = 1.0;
          value[b] = 2.0;
          value[c] = 3.0;
+         soa.update();
 
-         ASSERT((soa.accessor.get<"first", a>() == 1.0), "Value incorrect");
-         ASSERT((soa.accessor.get<"first", b>() == 2.0), "Value incorrect");
-         ASSERT((soa.accessor.get<"first", c>() == 3.0), "Value incorrect");
+         ASSERT((accessor.get<"first", a>() == 1.0), "Value incorrect");
+         ASSERT((accessor.get<"first", b>() == 2.0), "Value incorrect");
+         ASSERT((accessor.get<"first", c>() == 3.0), "Value incorrect");
      }},
     {"AoSoa_memset",
      [](Result &result) {
@@ -622,22 +645,25 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          soa.memset<"third">(std::memset, 0xFF);
+         soa.update();
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
-             ASSERT(static_cast<uint32_t>(soa.accessor.get<"third">(i)) ==
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(static_cast<uint32_t>(accessor.get<"third">(i)) ==
                         0xFFFFFFFF,
                     "Value incorrect first");
          }
 
          soa.memset<"third">(std::memset, 0);
+         soa.update();
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
-             ASSERT(soa.accessor.get<"third">(i) == 0,
-                    "Value incorrect second");
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(accessor.get<"third">(i) == 0, "Value incorrect second");
          }
      }},
     {"AoSoa_memcpy1",
@@ -652,8 +678,10 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
+         soa.update();
 
          const std::vector<double> rands1([]() {
              std::vector<double> vec(n);
@@ -668,23 +696,25 @@ constexpr static Test tests[]{
          }());
 
          soa.memcpy<"first">(rands1.data(), std::memcpy);
+         soa.update();
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
-             ASSERT(soa.accessor.get<"first">(i) == rands1[i],
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(accessor.get<"first">(i) == rands1[i],
                     "Incorret value first");
          }
 
          soa.memcpy<"second", "first">(std::memcpy);
+         soa.update();
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
-             ASSERT(soa.accessor.get<"second">(i) == rands1[i],
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(accessor.get<"second">(i) == rands1[i],
                     "Incorret value second");
          }
 
          std::vector<double> rands2(n);
          soa.memcpy<"second">(rands2.data(), std::memcpy);
 
-         for (size_t i = 0; i < soa.accessor.size(); i++) {
+         for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(rands2[i] == rands1[i], "Incorret value rands2");
          }
      }},
@@ -700,7 +730,8 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
 
          const uintptr_t address = reinterpret_cast<uintptr_t>(bytes.data());
@@ -723,7 +754,8 @@ constexpr static Test tests[]{
 
          const size_t mem_req = Soa::getMemReq(n);
          std::vector<uint8_t> bytes(mem_req);
-         Soa soa(n);
+         Soa::Accessor accessor;
+         Soa soa(n, &accessor);
          soa.allocate(static_cast<void *>(bytes.data()));
 
          ASSERT(alignment + soa.getAlignedBlockSize() == Soa::getMemReq(n),

@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <ostream>
 #include <type_traits>
@@ -434,28 +435,37 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         }
     };
 
-    Accessor accessor = {};
-
   private:
     const size_t max_num_elements;
     void *data = nullptr;
+    Accessor local_accessor = {};
+    // The user provides this and accesses data through this
+    Accessor *const remote_accessor = nullptr;
 
   public:
-    StructureOfArrays(size_t n) : max_num_elements(n) {}
+    StructureOfArrays(size_t n, Accessor *accessor)
+        : max_num_elements(n), remote_accessor(accessor) {}
 
     ~StructureOfArrays() {
         // TODO: deallocate
         data = nullptr;
-        accessor.pointers = Pointers{};
+        local_accessor.pointers = Pointers{};
     }
 
     void allocate(void *ptr) {
         // TODO: allocate data
         data = ptr;
-        accessor = Accessor{
+        local_accessor = Accessor{
             max_num_elements,
             makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
                 data, Pointers{}, ~0ul, max_num_elements)};
+    }
+
+    void update() const {
+        // TODO: use user provided copying
+        std::memcpy(static_cast<void *>(remote_accessor),
+                    static_cast<const void *>(&local_accessor),
+                    sizeof(Accessor));
     }
 
     [[nodiscard]] static size_t getMemReq(size_t n) {
@@ -488,7 +498,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         // How many bytes from the beginning of the data pointer are unused due
         // to alignment requirement
         return static_cast<uintptr_t>(
-            static_cast<uint8_t *>(accessor.pointers[0]) -
+            static_cast<uint8_t *>(local_accessor.pointers[0]) -
             static_cast<uint8_t *>(data));
     }
 
@@ -499,7 +509,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         static_assert(IsSame<typename G1::Type, typename G2::Type>::value,
                       "Mismatched types for swap");
 
-        std::swap(accessor.pointers[G1::i], accessor.pointers[G2::i]);
+        std::swap(local_accessor.pointers[G1::i],
+                  local_accessor.pointers[G2::i]);
     }
 
     // TODO get vector of rows from wherever the data recides in
@@ -514,7 +525,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using Gs = GetType<Src>;
         static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
                       "Mismatched types for memcpy");
-        return f(accessor.pointers[Gd::i], accessor.pointers[Gs::i],
+        return f(local_accessor.pointers[Gd::i], local_accessor.pointers[Gs::i],
                  getMemReq<Dst>(), args...);
     }
 
@@ -527,7 +538,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using G = GetType<Dst>;
         static_assert(IsSame<typename G::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return f(accessor.pointers[G::i], static_cast<const void *>(src),
+        return f(local_accessor.pointers[G::i], static_cast<const void *>(src),
                  getMemReq<Dst>(), args...);
     }
 
@@ -540,7 +551,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using G = GetType<Src>;
         static_assert(IsSame<typename G::Type, DstType>::value,
                       "Mismatched types for memcpy");
-        return f(static_cast<void *>(dst), accessor.pointers[G::i],
+        return f(static_cast<void *>(dst), local_accessor.pointers[G::i],
                  getMemReq<Src>(), args...);
     }
 
@@ -548,7 +559,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     T memset(T (*f)(void *, int, size_t, AdditionalArgs...), int value,
              AdditionalArgs... args) {
         using G = GetType<Dst>;
-        return f(accessor.pointers[G::i], value, getMemReq<Dst>(), args...);
+        return f(local_accessor.pointers[G::i], value, getMemReq<Dst>(),
+                 args...);
     }
 
   private:
