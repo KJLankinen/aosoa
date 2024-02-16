@@ -25,6 +25,7 @@
 #include <ostream>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #ifdef __NVCC__
 #define HOST __host__
@@ -356,14 +357,31 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
  * */
 
 template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
-    // TODO: maybe this should perform allocation and deallocation?
-    // Give both functions at construction, then this uses those internally
-    // Only on host, make sure no deallocation happens on device destuctor (how?
-    // separate destructors?) When/how device destructor is called? Capacity and
-    // size must be mutable, so the size can grow/decrease
-
+    // TODO: Think through
+    // Are there two use cases mixed in here?
+    // One use case is about making data movement and usage easier on the host
+    // Another is about making data access easy and fast on GPUs and/or cache
+    // friendly on CPUs
+    //
+    // Use case 1
+    // - Halutaan siirtää dataa kahden pointterin välillä
+    // - Halutaan serialisoida Aos-muodossa tiedostoon
+    // - Halutaan initialisoidan Aos-muotoisen vektorin perusteella
+    // - Halutaan kopsata yhdellä kertaa kaikki GPU:lta
+    // - Halutaan muuttaa kokoa ja seurata sen muutosta (pienentää)
+    // -
+    //
+    // Use case 2
+    // - Halutaan muistista peräkkäisiä arvoja helposti (get(i))
+    // - Halutaan muuttaa kokoa? (Pienentää atomiceilla?)
+    // - Halutaan kirjoittaa yksittäisiä perättäisiä arvoja helposti (set(i))
+    // - Halutaan luupata vain koon verran (size())
+    // -
+    //
+    // One use case is about accessing the data on the same memory space it
+    // actually recides in Another use case is moving that data easily between
+    // two memory spaces
     using FullRow = aosoa::Row<Variables...>;
-
     template <CompileTimeString Cts> struct GetType {
         static constexpr size_t i =
             IndexOfString<Cts, PairTraits<Variables>::name...>::i;
@@ -376,7 +394,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
                   "StructureOfArrays struct has clashing names");
 
     const size_t max_num_elements = 0;
-    size_t num_elements = 0;
+    // The size may decrease, but not increase
+    size_t num_elements_per_array = 0;
     void *const data = nullptr;
     static constexpr size_t num_pointers = sizeof...(Variables);
 
@@ -387,28 +406,31 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     HOST DEVICE constexpr StructureOfArrays() {}
 
     StructureOfArrays(size_t n, void *ptr)
-        : max_num_elements(n), num_elements(max_num_elements), data(ptr),
+        : max_num_elements(n), num_elements_per_array(n), data(ptr),
           pointers(
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
                   data, Pointers{}, ~0ul, max_num_elements)) {}
 
-    [[nodiscard]] static size_t getMemReq(size_t num_elements) {
+    [[nodiscard]] static size_t getMemReq(size_t n) {
         // Get proper begin alignment: the strictest (largest) alignment
         // requirement between all the types and the MIN_ALIGN
         alignas(getAlignment()) uint8_t dummy = 0;
-        constexpr size_t n = ~size_t(0);
-        size_t space = n;
+        constexpr size_t max_size = ~size_t(0);
+        size_t space = max_size;
         [[maybe_unused]] const auto pointers =
             makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                static_cast<void *>(&dummy), Pointers{}, std::move(space),
-                num_elements);
+                static_cast<void *>(&dummy), Pointers{}, std::move(space), n);
 
-        const size_t num_bytes = n - space;
+        const size_t num_bytes = max_size - space;
         // Require a block of (M + 1) * alignment bytes, where M is an integer.
         // The +1 is for manual alignment, if the memory allocation doesn't have
         // a strict enough alignment requirement.
         return num_bytes + bytesMissingFromAlignment(num_bytes) +
                getAlignment();
+    }
+
+    template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
+        return capacity() * sizeof(typename GetType<Cts>::Type);
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
@@ -467,6 +489,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
 
     // TODO get vector of rows from wherever the data recides in
     // if on device memory, copy to host, then create rows
+    std::vector<FullRow> getRows() const {
+        // If possible, pass default copy/memset functions to constructor
+        // Then those can be used here
+    }
 
     // Internal to internal
     template <CompileTimeString Dst, CompileTimeString Src, typename T,
@@ -475,12 +501,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
              AdditionalArgs... args) {
         using Gd = GetType<Dst>;
         using Gs = GetType<Src>;
-
         static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
                       "Mismatched types for memcpy");
-
-        const size_t bytes = max_num_elements * sizeof(typename Gd::Type);
-        return f(pointers[Gd::i], pointers[Gs::i], bytes, args...);
+        return f(pointers[Gd::i], pointers[Gs::i], getMemReq<Dst>(), args...);
     }
 
     // External to internal
@@ -490,13 +513,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
              T (*f)(void *, const void *, size_t, AdditionalArgs...),
              AdditionalArgs... args) {
         using G = GetType<Dst>;
-
         static_assert(IsSame<typename G::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-
-        const size_t bytes = max_num_elements * sizeof(typename G::Type);
-        return f(pointers[G::i], static_cast<const void *>(src), bytes,
-                 args...);
+        return f(pointers[G::i], static_cast<const void *>(src),
+                 getMemReq<Dst>(), args...);
     }
 
     // Internal to external
@@ -506,29 +526,28 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
              T (*f)(void *, const void *, size_t, AdditionalArgs...),
              AdditionalArgs... args) {
         using G = GetType<Src>;
-
         static_assert(IsSame<typename G::Type, DstType>::value,
                       "Mismatched types for memcpy");
-
-        const size_t bytes = max_num_elements * sizeof(typename G::Type);
-        return f(static_cast<void *>(dst), pointers[G::i], bytes, args...);
+        return f(static_cast<void *>(dst), pointers[G::i], getMemReq<Src>(),
+                 args...);
     }
 
     template <CompileTimeString Dst, typename T, typename... AdditionalArgs>
     T memset(T (*f)(void *, int, size_t, AdditionalArgs...), int value,
              AdditionalArgs... args) {
         using G = GetType<Dst>;
-        const size_t bytes = max_num_elements * sizeof(typename G::Type);
-        return f(pointers[G::i], value, bytes, args...);
+        return f(pointers[G::i], value, getMemReq<Dst>(), args...);
     }
 
     template <size_t MA, typename... Ts>
     friend std::ostream &operator<<(std::ostream &,
                                     const StructureOfArrays<MA, Ts...> &);
 
-    HOST DEVICE size_t size() const { return num_elements; }
+    HOST DEVICE size_t size() const { return num_elements_per_array; }
     HOST DEVICE size_t capacity() const { return max_num_elements; }
-    void decrease(size_t n) { num_elements -= std::min(num_elements, n); }
+    void decrease(size_t n) {
+        num_elements_per_array -= std::min(num_elements_per_array, n);
+    }
 
   private:
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
@@ -576,18 +595,17 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     template <size_t I, typename Head, typename... Tail>
     [[nodiscard]] static Pointers
     makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space,
-                        size_t num_elements) {
+                        size_t n) {
         constexpr size_t size_of_type = sizeof(Head);
         if (ptr) {
             ptr = std::align(getAlignment(), size_of_type, ptr, space);
             if (ptr) {
                 pointers[I] = ptr;
-                ptr = static_cast<void *>(static_cast<Head *>(ptr) +
-                                          num_elements);
-                space -= size_of_type * num_elements;
+                ptr = static_cast<void *>(static_cast<Head *>(ptr) + n);
+                space -= size_of_type * n;
 
-                return makeAlignedPointers<I + 1, Tail...>(
-                    ptr, pointers, std::move(space), num_elements);
+                return makeAlignedPointers<I + 1, Tail...>(ptr, pointers,
+                                                           std::move(space), n);
             }
         }
 
@@ -649,7 +667,7 @@ std::ostream &operator<<(std::ostream &os,
     os << "Soa {\n  ";
     os << "num members: " << n << "\n  ";
     os << "max num elements: " << soa.max_num_elements << "\n  ";
-    os << "num elements: " << soa.num_elements << "\n  ";
+    os << "num elements: " << soa.num_elements_per_array << "\n  ";
     os << "memory requirement (bytes): " << Soa::getMemReq(soa.max_num_elements)
        << "\n  ";
     os << "*data: " << soa.data << "\n  ";
