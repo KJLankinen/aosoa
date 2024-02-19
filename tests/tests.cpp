@@ -38,15 +38,12 @@ void soa() {
         num_hits[i] = -static_cast<int>(i);
     }
 
-    thingie.update();
-
     std::cout << accessor.get<"is_visible">(n / 2 - 1) << " "
               << accessor.get<"is_visible">(n / 2) << " "
               << accessor.get<"radius">(n / 2 - 1) << " "
               << accessor.get<"radius">(n / 2) << std::endl;
 
     accessor.set<"radius">(4, 1338.0f);
-    thingie.update();
 
     std::cout << accessor.get<"radius2">(4) << " " << accessor.get<"radius">(4)
               << std::endl;
@@ -60,7 +57,6 @@ void soa() {
     }
 
     accessor.set(2, Soa::FullRow(true, 1337.0f, 1337.0, -12));
-    thingie.update();
     std::cout << accessor2.get(2) << std::endl;
 }
 
@@ -505,7 +501,6 @@ constexpr static Test tests[]{
          accessor.set(a, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
          accessor.set(b, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
          accessor.set(c, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
-         soa.update();
 
          for (size_t i = 0; i < accessor.size(); i++) {
              const bool is_default = i != a && i != b && i != c;
@@ -545,7 +540,6 @@ constexpr static Test tests[]{
          accessor.set<"first">(a, 5.0);
          accessor.set<"first">(b, 666.666);
          accessor.set<"first">(c, 321);
-         soa.update();
 
          for (size_t i = 0; i < accessor.size(); i++) {
              const bool is_default = i != a && i != b && i != c;
@@ -596,7 +590,6 @@ constexpr static Test tests[]{
          value[a] = 1.0;
          value[b] = 2.0;
          value[c] = 3.0;
-         soa.update();
 
          ASSERT(accessor.get<"first">(a) == 1.0, "Value incorrect");
          ASSERT(accessor.get<"first">(b) == 2.0, "Value incorrect");
@@ -627,7 +620,6 @@ constexpr static Test tests[]{
          value[a] = 1.0;
          value[b] = 2.0;
          value[c] = 3.0;
-         soa.update();
 
          ASSERT((accessor.get<"first", a>() == 1.0), "Value incorrect");
          ASSERT((accessor.get<"first", b>() == 2.0), "Value incorrect");
@@ -651,7 +643,6 @@ constexpr static Test tests[]{
          soa.update();
 
          soa.memset<"third">(std::memset, 0xFF);
-         soa.update();
 
          for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(static_cast<uint32_t>(accessor.get<"third">(i)) ==
@@ -660,7 +651,6 @@ constexpr static Test tests[]{
          }
 
          soa.memset<"third">(std::memset, 0);
-         soa.update();
 
          for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(accessor.get<"third">(i) == 0, "Value incorrect second");
@@ -696,7 +686,6 @@ constexpr static Test tests[]{
          }());
 
          soa.memcpy<"first">(rands1.data(), std::memcpy);
-         soa.update();
 
          for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(accessor.get<"first">(i) == rands1[i],
@@ -704,7 +693,6 @@ constexpr static Test tests[]{
          }
 
          soa.memcpy<"second", "first">(std::memcpy);
-         soa.update();
 
          for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(accessor.get<"second">(i) == rands1[i],
