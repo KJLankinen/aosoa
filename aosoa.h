@@ -21,11 +21,13 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <ostream>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #ifdef __NVCC__
 #define HOST __host__
@@ -121,6 +123,34 @@ template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
 namespace aosoa {
 // Usage: Variable<double, "foo">
 template <typename, CompileTimeString> struct Variable {};
+
+// Override this for cuda, hip, sycl and others
+struct MemoryOps {
+    virtual void *allocate(size_t bytes) const = 0;
+    virtual void deallocate(void *ptr) const = 0;
+    virtual void memcpy(void *dst, const void *src, size_t bytes,
+                        bool synchronous = true) const = 0;
+    virtual void memset(void *dst, int pattern, size_t bytes,
+                        bool synchronous = true) const = 0;
+    virtual void update(void *dst, const void *src, size_t bytes) const = 0;
+    virtual bool accessOnHostRequiresMemcpy() const = 0;
+};
+
+// Standard C-style operations
+struct CMemoryOps : MemoryOps {
+    void *allocate(size_t bytes) const { return malloc(bytes); }
+    void deallocate(void *ptr) const { free(ptr); }
+    void memcpy(void *dst, const void *src, size_t bytes, bool) const {
+        std::memcpy(dst, src, bytes);
+    }
+    void memset(void *dst, int pattern, size_t bytes, bool) const {
+        std::memset(dst, pattern, bytes);
+    }
+    void update(void *dst, const void *src, size_t bytes) const {
+        std::memcpy(dst, src, bytes);
+    }
+    bool accessOnHostRequiresMemcpy() const { return false; }
+};
 } // namespace aosoa
 
 namespace {
@@ -169,6 +199,17 @@ struct IndexOfString {
 
   public:
     constexpr static size_t i = index<0, Strings...>();
+};
+
+// A very simple buffer that allocates/deallocates memory with the given
+// MemoryOps
+struct Buffer {
+    const aosoa::MemoryOps &memory_ops;
+    void *const data = nullptr;
+
+    Buffer(const aosoa::MemoryOps &mem_ops, size_t bytes)
+        : memory_ops(mem_ops), data(memory_ops.allocate(bytes)) {}
+    ~Buffer() { memory_ops.deallocate(data); }
 };
 } // namespace
 
@@ -358,7 +399,6 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
 
     using FullRow = aosoa::Row<Variables...>;
 
-    // Use accessor wherever the data recides to access the elements
     struct Accessor {
       private:
         template <size_t I, typename... T> friend struct StructureOfArrays;
@@ -436,37 +476,44 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     };
 
   private:
+    const MemoryOps &memory_ops;
     const size_t max_num_elements;
-    void *data = nullptr;
+    const Buffer buffer;
     Accessor local_accessor = {};
-    // The user provides this and accesses data through this
     Accessor *const remote_accessor = nullptr;
 
   public:
-    StructureOfArrays(size_t n, Accessor *accessor)
-        : max_num_elements(n), remote_accessor(accessor) {}
+    StructureOfArrays(const MemoryOps &mem_ops,
+                      const std::vector<FullRow> &rows, Accessor *accessor)
+        : memory_ops(mem_ops), max_num_elements(rows.size()),
+          buffer(memory_ops, getMemReq(max_num_elements)),
+          local_accessor(
+              max_num_elements,
+              makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
+                  buffer.data, Pointers{}, ~0ul, max_num_elements)),
+          remote_accessor(accessor) {
+        // Setup the accessor
+        updateAccessor();
 
-    ~StructureOfArrays() {
-        // TODO: deallocate
-        data = nullptr;
-        local_accessor.pointers = Pointers{};
+        // Initialize the memory with the given vector
+        if (memory_ops.accessOnHostRequiresMemcpy()) {
+            CMemoryOps c_mem_ops;
+            Accessor a;
+            StructureOfArrays<MIN_ALIGN, Variables...> host_soa(c_mem_ops, rows,
+                                                                &a);
+            memory_ops.memcpy(local_accessor.pointers[0],
+                              host_soa.local_accessor.pointers[0],
+                              getAlignedBlockSize(), true);
+        } else {
+            size_t i = 0;
+            for (const auto &row : rows) {
+                local_accessor.set(i++, row);
+            }
+        }
     }
 
-    void allocate(void *ptr) {
-        // TODO: allocate data
-        data = ptr;
-        local_accessor = Accessor{
-            max_num_elements,
-            makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                data, Pointers{}, ~0ul, max_num_elements)};
-    }
-
-    void update() const {
-        // TODO: use user provided copying
-        std::memcpy(static_cast<void *>(remote_accessor),
-                    static_cast<const void *>(&local_accessor),
-                    sizeof(Accessor));
-    }
+    StructureOfArrays(const MemoryOps &mem_ops, size_t n, Accessor *accessor)
+        : StructureOfArrays(mem_ops, std::vector<FullRow>(n), accessor) {}
 
     [[nodiscard]] static size_t getMemReq(size_t n) {
         // Get proper begin alignment: the strictest (largest) alignment
@@ -487,7 +534,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
-        return max_num_elements * sizeof(typename GetType<Cts>::Type);
+        return local_accessor.num_elements *
+               sizeof(typename GetType<Cts>::Type);
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
@@ -499,10 +547,20 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         // to alignment requirement
         return static_cast<uintptr_t>(
             static_cast<uint8_t *>(local_accessor.pointers[0]) -
-            static_cast<uint8_t *>(data));
+            static_cast<uint8_t *>(buffer.data));
     }
 
-    template <CompileTimeString Cts1, CompileTimeString Cts2> void swap() {
+    [[nodiscard]] void *data() const { return buffer.data; }
+
+    void decreaseBy(size_t n, bool update_accessor = false) {
+        local_accessor.num_elements -= std::min(n, local_accessor.num_elements);
+        if (update_accessor) {
+            updateAccessor();
+        }
+    }
+
+    template <CompileTimeString Cts1, CompileTimeString Cts2>
+    void swap(bool update_accessor = false) {
         using G1 = GetType<Cts1>;
         using G2 = GetType<Cts2>;
 
@@ -511,59 +569,164 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
 
         std::swap(local_accessor.pointers[G1::i],
                   local_accessor.pointers[G2::i]);
+
+        if (update_accessor) {
+            updateAccessor();
+        }
     }
 
-    // TODO get vector of rows from wherever the data recides in
-    // if on device memory, copy to host, then create rows
+    template <CompileTimeString Cts1, CompileTimeString Cts2,
+              CompileTimeString... Tail>
+    void swap(bool update_accessor = false) {
+        swap<Cts1, Cts2>();
+        swap<Tail...>();
+
+        if (update_accessor) {
+            updateAccessor();
+        }
+    }
+
+    template <typename F, typename... Args>
+    auto updateAccessor(F f, Args... args) const {
+        return f(static_cast<void *>(remote_accessor),
+                 static_cast<const void *>(&local_accessor), sizeof(Accessor),
+                 args...);
+    }
+
+    auto updateAccessor() const {
+        return memory_ops.update(static_cast<void *>(remote_accessor),
+                                 static_cast<const void *>(&local_accessor),
+                                 sizeof(Accessor));
+    }
+
+    std::vector<FullRow> getRows() const {
+        // This is an expensive function: it copies all the memory twice, if the
+        // memory recides on device. The first copy is the raw data from device
+        // to host, the second is from soa (= current) layout to aos (= vector
+        // of FullRow) layout
+        if (memory_ops.accessOnHostRequiresMemcpy()) {
+            // Create this structure backed by host memory, then call it's
+            // version of this function
+            CMemoryOps c_mem_ops;
+            Accessor a;
+            StructureOfArrays<MIN_ALIGN, Variables...> host_soa(
+                c_mem_ops, max_num_elements, &a);
+            memory_ops.memcpy(host_soa.local_accessor.pointers[0],
+                              local_accessor.pointers[0], getAlignedBlockSize(),
+                              true);
+            host_soa.local_accessor.num_elements = local_accessor.num_elements;
+
+            return host_soa.getRows();
+        } else {
+            // Just convert to a vector of rows
+            std::vector<FullRow> rows(local_accessor.num_elements);
+            std::generate(rows.begin(), rows.end(), [i = 0ul, this]() mutable {
+                return local_accessor.get(i++);
+            });
+            return rows;
+        }
+    }
 
     // Internal to internal
-    template <CompileTimeString Dst, CompileTimeString Src, typename T,
-              typename... AdditionalArgs>
-    T memcpy(T (*f)(void *, const void *, size_t, AdditionalArgs...),
-             AdditionalArgs... args) {
+    template <CompileTimeString Dst, CompileTimeString Src, typename F,
+              typename... Args>
+    auto memcpy(F f, Args... args) {
         using Gd = GetType<Dst>;
         using Gs = GetType<Src>;
         static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
                       "Mismatched types for memcpy");
-        return f(local_accessor.pointers[Gd::i], local_accessor.pointers[Gs::i],
-                 getMemReq<Dst>(), args...);
+
+        return memcpy(f, local_accessor.pointers[Gd::i],
+                      local_accessor.pointers[Gs::i], getMemReq<Dst>(),
+                      args...);
+    }
+
+    // Internal to internal
+    template <CompileTimeString Dst, CompileTimeString Src> auto memcpy() {
+        using Gd = GetType<Dst>;
+        using Gs = GetType<Src>;
+        static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
+                      "Mismatched types for memcpy");
+
+        return memcpy(local_accessor.pointers[Gd::i],
+                      local_accessor.pointers[Gs::i], getMemReq<Dst>());
     }
 
     // External to internal
-    template <CompileTimeString Dst, typename SrcType, typename T,
-              typename... AdditionalArgs>
-    T memcpy(const SrcType *src,
-             T (*f)(void *, const void *, size_t, AdditionalArgs...),
-             AdditionalArgs... args) {
+    template <CompileTimeString Dst, typename SrcType, typename F,
+              typename... Args>
+    auto memcpy(F f, const SrcType *src, Args... args) {
         using G = GetType<Dst>;
         static_assert(IsSame<typename G::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return f(local_accessor.pointers[G::i], static_cast<const void *>(src),
-                 getMemReq<Dst>(), args...);
+        return memcpy(f, local_accessor.pointers[G::i],
+                      static_cast<const void *>(src), getMemReq<Dst>(),
+                      args...);
+    }
+
+    // External to internal
+    template <CompileTimeString Dst, typename SrcType>
+    auto memcpy(const SrcType *src) {
+        using G = GetType<Dst>;
+        static_assert(IsSame<typename G::Type, SrcType>::value,
+                      "Mismatched types for memcpy");
+        return memcpy(local_accessor.pointers[G::i],
+                      static_cast<const void *>(src), getMemReq<Dst>());
     }
 
     // Internal to external
-    template <CompileTimeString Src, typename DstType, typename T,
-              typename... AdditionalArgs>
-    T memcpy(DstType *dst,
-             T (*f)(void *, const void *, size_t, AdditionalArgs...),
-             AdditionalArgs... args) {
+    template <CompileTimeString Src, typename DstType, typename F,
+              typename... Args>
+    auto memcpy(F f, DstType *dst, Args... args) {
         using G = GetType<Src>;
         static_assert(IsSame<typename G::Type, DstType>::value,
                       "Mismatched types for memcpy");
-        return f(static_cast<void *>(dst), local_accessor.pointers[G::i],
-                 getMemReq<Src>(), args...);
+        return memcpy(f, static_cast<void *>(dst),
+                      local_accessor.pointers[G::i], getMemReq<Src>(), args...);
     }
 
-    template <CompileTimeString Dst, typename T, typename... AdditionalArgs>
-    T memset(T (*f)(void *, int, size_t, AdditionalArgs...), int value,
-             AdditionalArgs... args) {
+    // Internal to external
+    template <CompileTimeString Src, typename DstType>
+    auto memcpy(DstType *dst) {
+        using G = GetType<Src>;
+        static_assert(IsSame<typename G::Type, DstType>::value,
+                      "Mismatched types for memcpy");
+        return memcpy(static_cast<void *>(dst), local_accessor.pointers[G::i],
+                      getMemReq<Src>());
+    }
+
+    template <CompileTimeString Dst, typename F, typename... Args>
+    auto memset(F f, int pattern, Args... args) {
         using G = GetType<Dst>;
-        return f(local_accessor.pointers[G::i], value, getMemReq<Dst>(),
+        return f(local_accessor.pointers[G::i], pattern, getMemReq<Dst>(),
                  args...);
     }
 
+    template <CompileTimeString Dst> auto memset(int pattern) {
+        using G = GetType<Dst>;
+        return memset(local_accessor.pointers[G::i], pattern, getMemReq<Dst>());
+    }
+
   private:
+    template <typename F, typename... Args>
+    auto memcpy(F f, void *dst, const void *src, size_t bytes,
+                Args... args) const {
+        return f(dst, src, bytes, args...);
+    }
+
+    auto memcpy(void *dst, const void *src, size_t bytes) const {
+        return memory_ops.memcpy(dst, src, bytes);
+    }
+
+    template <typename F, typename... Args>
+    auto memset(F f, void *dst, int pattern, size_t bytes, Args... args) const {
+        return f(dst, pattern, bytes, args...);
+    }
+
+    auto memset(void *dst, int pattern, size_t bytes) const {
+        return memory_ops.memset(dst, pattern, bytes);
+    }
+
     [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
         return (getAlignment() - bytesOverAlignment(n)) & (getAlignment() - 1);
     }
