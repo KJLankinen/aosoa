@@ -1,22 +1,16 @@
 #include "../aosoa.h"
-#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
-#include <random>
 #include <vector>
 
 using namespace aosoa;
 
 // TODO:
-// decreaseBy with true and false arguments
-// swap with multiple
-// swap with true and false
-// constructor with vector
-// constructor with no vector
-// updateAccessor testing
-// buffer test:
+// StructureOfArrays tests with Balls
+//
+// Buffer test:
 // - constructing and freeing in a loop to see memory usage
 // - a throwing constructor for a type that uses buffer: see if deallocation
 // works correctly sycl/cuda/hip testing
@@ -92,182 +86,204 @@ struct Test {
     } while (0)
 } // namespace
 
+typedef Row<Variable<float, "head">> RowSingle;
+typedef Row<Variable<float, "head">, Variable<int32_t, "tail">> RowDouble;
+
+template <size_t Alignment>
+using MemReqSoa = StructureOfArrays<Alignment, Variable<double, "first">,
+                                    Variable<float, "second">>;
+
+// clang-format off
+template <size_t Alignment>
+using Balls = StructureOfArrays<Alignment,
+            Variable<double, "position_x">,
+            Variable<double, "position_y">,
+            Variable<double, "position_z">,
+            Variable<double, "radius">,
+            Variable<float, "color_r">,
+            Variable<float, "color_g">,
+            Variable<float, "color_b">,
+            Variable<uint32_t, "index">,
+            Variable<int32_t, "index_distance">,
+            Variable<bool, "is_visible">>;
+// clang-format on
+
+template <size_t Alignment> using Ball = Balls<Alignment>::FullRow;
+const aosoa::CMemoryOps memory_ops = {};
+
 constexpr static Test tests[]{
-    {"Row_construct1",
-     [](Result &result) {
-         const Row<Variable<double, "foo">, Variable<float, "bar">,
-                   Variable<int, "baz">>
-             row(1.0, 1.0f, 1);
-
-         ASSERT(row.get<"foo">() == 1.0, "foo incorrect");
-         ASSERT(row.get<"bar">() == 1.0f, "bar incorrect");
-         ASSERT(row.get<"baz">() == 1, "baz incorrect");
+    {"sizeof(RowSingle)",
+     [](Result &) { static_assert(sizeof(RowSingle) == sizeof(float)); }},
+    {"sizeof(RowDouble)",
+     [](Result &) {
+         static_assert(sizeof(RowDouble) == sizeof(float) + sizeof(int32_t));
      }},
-    {"Row_construct2",
+    {"RowSingle_construct1",
      [](Result &result) {
-         const Row<Variable<double, "foo">> row(1.0);
-         ASSERT(row.get<"foo">() == 1.0, "foo incorrect");
+         ASSERT(RowSingle().get<"head">() == 0.0f,
+                "Default value should be 0.0f");
      }},
-    {"Row_construct3",
+    {"RowSingle_construct2",
      [](Result &result) {
-         const Row<Variable<double, "foo">, Variable<float, "bar">,
-                   Variable<int, "baz">>
-             row(Row<Variable<double, "foo">, Variable<float, "bar">,
-                     Variable<int, "baz">>{5.0, 6.0f, 7});
-
-         ASSERT(row.get<"foo">() == 5.0, "foo incorrect");
-         ASSERT(row.get<"bar">() == 6.0f, "bar incorrect");
-         ASSERT(row.get<"baz">() == 7, "baz incorrect");
+         ASSERT(RowSingle(1.0f).get<"head">() == 1.0f, "Value should be 1.0f");
      }},
-    {"Row_construct4",
+    {"RowSingle_construct3",
      [](Result &result) {
-         const Row<Variable<double, "foo">, Variable<float, "bar">,
-                   Variable<int, "baz">>
-             row(5.0,
-                 Row<Variable<float, "bar">, Variable<int, "baz">>{6.0f, 7});
-
-         ASSERT(row.get<"foo">() == 5.0, "foo incorrect");
-         ASSERT(row.get<"bar">() == 6.0f, "bar incorrect");
-         ASSERT(row.get<"baz">() == 7, "baz incorrect");
+         ASSERT(RowSingle(RowSingle(2.0f)).get<"head">() == 2.0f,
+                "Value should be 2.0f");
      }},
-    {"Row_construct5",
+    {"RowSingle_get_set1",
      [](Result &result) {
-         const Row<Variable<double, "foo">, Variable<float, "bar">,
-                   Variable<int, "baz">>
-             row(5.0, 6.0f, 7);
-
-         ASSERT(row.get<"foo">() == 5.0, "foo incorrect");
-         ASSERT(row.get<"bar">() == 6.0f, "bar incorrect");
-         ASSERT(row.get<"baz">() == 7, "baz incorrect");
+         RowSingle row;
+         row.get<"head">() = 10.0f;
+         ASSERT(row.get<"head">() == 10.0f, "Value should be 10.0f");
      }},
-    {"Row_default_construct",
+    {"RowSingle_get_set2",
      [](Result &result) {
-         const Row<Variable<double, "foo">, Variable<float, "bar">,
-                   Variable<int, "baz">>
-             row;
-
-         ASSERT(row.get<"foo">() == 0.0, "foo incorrect");
-         ASSERT(row.get<"bar">() == 0.0f, "bar incorrect");
-         ASSERT(row.get<"baz">() == 0, "baz incorrect");
+         RowSingle row;
+         row.set<"head">(10.0f);
+         ASSERT(row.get<"head">() == 10.0f, "Value should be 10.0f");
      }},
-    {"Row_set",
+    {"RowSingle_getconst",
      [](Result &result) {
-         Row<Variable<double, "foo">> row(1.0);
-         row.set<"foo">(2.0);
-         ASSERT(row.get<"foo">() == 2.0, "foo incorrect");
+         const RowSingle row(666.666f);
+         const float val = row.get<"head">();
+         ASSERT(val == 666.666f, "Value should be 666.666f");
      }},
-    {"Row_set2",
+    {"RowSingle_equality1",
      [](Result &result) {
-         Row<Variable<double, "foo">> row(1.0);
-         row.get<"foo">() = 2.0;
-         ASSERT(row.get<"foo">() == 2.0, "foo incorrect");
+         const RowSingle row(666.666f);
+         ASSERT(row == RowSingle(666.666f), "Values should be equal");
      }},
-    {"Row_equality1",
+    {"RowSingle_equality2",
      [](Result &result) {
-         Row<Variable<double, "foo">> row(1.0);
-         row.get<"foo">() = 2.0;
-         ASSERT((row == Row<Variable<double, "foo">>(2.0)), "Values inequal");
+         const RowSingle row{};
+         ASSERT(row == RowSingle(0.0f), "Values should be equal");
      }},
-    {"Row_equality2",
+    {"RowSingle_equality3",
      [](Result &result) {
-         typedef Row<Variable<double, "foo">, Variable<int, "bar">,
-                     Variable<char, "c">>
-             R;
-         const R row(1.0, 22222, 'c');
-         ASSERT((row == R(1.0, 22222, 'c')), "Values inequal");
+         const RowSingle row{};
+         ASSERT(row == row, "Row should be equal to itself");
      }},
-    {"sizeof(row)",
+    {"RowDouble_construct1",
      [](Result &result) {
-         const Row<Variable<double, "foo">, Variable<float, "bar">,
-                   Variable<int, "baz">, Variable<char, "foo2">>
-             row(1.0, 1.0f, 1, 'b');
-
-         // double + (float + int) + (char + padding)
-         ASSERT(sizeof(row) == 3 * sizeof(double), "Size incorrect");
+         const RowDouble row{};
+         ASSERT(row.get<"head">() == 0.0f, "Default value should be 0.0f");
+         ASSERT(row.get<"tail">() == 0, "Default value should be 0");
      }},
-    {"AoSoa_getMemReq1",
+    {"RowDouble_construct2",
+     [](Result &result) {
+         const RowDouble row(1.0f, 2);
+         ASSERT(row.get<"head">() == 1.0f, "Value should be 1.0f");
+         ASSERT(row.get<"tail">() == 2, "Value should be 2");
+     }},
+    {"RowDouble_construct3",
+     [](Result &result) {
+         const RowDouble row(RowDouble(3.0f, 666));
+         ASSERT(row.get<"head">() == 3.0f, "Value should be 3.0f");
+         ASSERT(row.get<"tail">() == 666, "Value should be 666");
+     }},
+    {"RowDouble_construct4",
+     [](Result &result) {
+         const RowDouble row(4.0f, Row<Variable<int32_t, "tail">>(666));
+         ASSERT(row.get<"head">() == 4.0f, "Value should be 4.0f");
+         ASSERT(row.get<"tail">() == 666, "Value should be 666");
+     }},
+    {"RowDouble_get_set1",
+     [](Result &result) {
+         RowDouble row{};
+         row.get<"head">() = 4.0f;
+         row.get<"tail">() = 666;
+         ASSERT(row.get<"head">() == 4.0f, "Value should be 4.0f");
+         ASSERT(row.get<"tail">() == 666, "Value should be 666");
+     }},
+    {"RowDouble_get_set2",
+     [](Result &result) {
+         RowDouble row{};
+         row.set<"head">(4.0f);
+         row.set<"tail">(666);
+         ASSERT(row.get<"head">() == 4.0f, "Value should be 4.0f");
+         ASSERT(row.get<"tail">() == 666, "Value should be 666");
+     }},
+    {"RowDouble_equality1",
+     [](Result &result) {
+         const RowDouble row{};
+         ASSERT(row == RowDouble(), "Rows should be equal");
+     }},
+    {"RowDouble_equality2",
+     [](Result &result) {
+         const RowDouble row(1.0f, 16);
+         ASSERT(row == RowDouble(1.0f, 16), "Rows should be equal");
+     }},
+    {"RowDouble_equality3",
+     [](Result &result) {
+         const RowDouble row(1.0f, 16);
+         ASSERT(row == row, "Row should be equal to itself");
+     }},
+    {"ShouldFailCompilationIfEnabled",
+     [](Result &) {
+         // Row<Variable<float, "head">, Variable<int32_t, "head">>
+         // fail_static_assert;
+     }},
+    {"StructureOfArrays_getMemReq1",
      [](Result &result) {
          constexpr size_t alignment = 1;
          constexpr size_t n = 1;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq2",
+    {"StructureOfArrays_getMemReq2",
      [](Result &result) {
          constexpr size_t alignment = 2;
          constexpr size_t n = 1;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq3",
+    {"StructureOfArrays_getMemReq3",
      [](Result &result) {
          constexpr size_t alignment = 4;
          constexpr size_t n = 1;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq4",
+    {"StructureOfArrays_getMemReq4",
      [](Result &result) {
          constexpr size_t alignment = 8;
          constexpr size_t n = 1;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq5",
+    {"StructureOfArrays_getMemReq5",
      [](Result &result) {
          constexpr size_t alignment = 16;
          constexpr size_t n = 1;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq6",
+    {"StructureOfArrays_getMemReq6",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq7",
+    {"StructureOfArrays_getMemReq7",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1024;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == n * (sizeof(double) + sizeof(float)) + alignment,
                 "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq8",
+    {"StructureOfArrays_getMemReq8",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
-         typedef StructureOfArrays<alignment, Variable<double, "first">,
-                                   Variable<float, "second">>
-             Soa;
-         const size_t mem_req = Soa::getMemReq(n);
+         const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
          ASSERT(mem_req == 8064 + 4096 + alignment,
                 "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq9",
+    {"StructureOfArrays_getMemReq9",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 1000;
@@ -280,7 +296,7 @@ constexpr static Test tests[]{
          ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
                 "Memory requirement mismatch");
      }},
-    {"AoSoa_getMemReq10",
+    {"StructureOfArrays_getMemReq10",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 3216547;
@@ -293,7 +309,7 @@ constexpr static Test tests[]{
          ASSERT((mem_req & (alignment - 1)) == 0,
                 "Total memory requirement must be a multiple of alignment");
      }},
-    {"AoSoa_getMemReq11",
+    {"StructureOfArrays_getMemReq11",
      [](Result &result) {
          constexpr size_t alignment = 32;
          constexpr size_t n = 3216547;
@@ -306,7 +322,7 @@ constexpr static Test tests[]{
          ASSERT((mem_req & (alignment - 1)) == 0,
                 "Total memory requirement must be a multiple of alignment");
      }},
-    {"AoSoa_getMemReq_BigType",
+    {"StructureOfArrays_getMemReq_BigType",
      [](Result &result) {
          constexpr size_t alignment = 128;
          constexpr size_t n = 100;
@@ -346,478 +362,276 @@ constexpr static Test tests[]{
          ASSERT((mem_req & (alignment - 1)) == 0,
                 "Total memory requirement must be a multiple of alignment");
      }},
-    {"AoSoa_construction1",
+    {"StructureOfArrays_construction1",
      [](Result &result) {
          constexpr size_t alignment = 128;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<float, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t n = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
 
-         const size_t mem_req = Soa::getMemReq(n);
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
+         const std::vector<Ball> init(n);
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
 
-         const std::array<void *, 5> pointers = {
-             static_cast<void *>(accessor.get<"first">()),
-             static_cast<void *>(accessor.get<"second">()),
-             static_cast<void *>(accessor.get<"third">()),
-             static_cast<void *>(accessor.get<"fourth">()),
-             static_cast<void *>(accessor.get<"fifth">()),
-         };
-
-         constexpr size_t max = ~0ul;
-         size_t space = max;
-         for (auto pointer : pointers) {
-             auto ptr = std::align(alignment, 1, pointer, space);
-             ASSERT(ptr == pointer, "Pointer is not aligned correctly");
-             ASSERT(space == max, "Space should not change");
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(accessor.get(i) == Ball{},
+                    "Balls should contain default initialized balls");
          }
+     }},
+    {"StructureOfArrays_construction2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
 
-         constexpr std::array<uintptr_t, 4> sizes = {
-             8064,
-             4096,
-             4096,
-             1024,
-         };
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
 
-         for (size_t i = 0; i < pointers.size() - 1; i++) {
-             ASSERT(reinterpret_cast<uintptr_t>(pointers[i + 1]) -
-                            reinterpret_cast<uintptr_t>(pointers[i]) ==
-                        sizes[i],
-                    "Size wrong");
+         for (size_t i = 0; i < accessor.size(); i++) {
+             ASSERT(accessor.get(i) == Ball{},
+                    "Balls should contain default initialized balls");
          }
+     }},
+    {"StructureOfArrays_construction3",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
 
-         const uintptr_t begin = reinterpret_cast<uintptr_t>(soa.data());
-         const uintptr_t bytes_at_end =
-             mem_req + begin - reinterpret_cast<uintptr_t>(pointers[4]) - 4096;
-         const uintptr_t bytes_at_begin =
-             reinterpret_cast<uintptr_t>(pointers[0]) - begin;
+         std::vector<Ball> init(n);
+         {
+             size_t i = 0;
+             for (auto &ball : init) {
+                 const auto di = static_cast<double>(i);
+                 const auto fi = static_cast<float>(i);
+                 const auto ui = static_cast<uint32_t>(i);
+                 const auto ii = static_cast<int32_t>(i);
+                 const auto bi = static_cast<bool>(i);
+
+                 ball.get<"position_x">() = di;
+                 ball.get<"position_y">() = di;
+                 ball.get<"position_z">() = di;
+                 ball.get<"radius">() = di;
+                 ball.get<"color_r">() = fi;
+                 ball.get<"color_g">() = fi;
+                 ball.get<"color_b">() = fi;
+                 ball.get<"index">() = ui;
+                 ball.get<"index_distance">() = ii;
+                 ball.get<"is_visible">() = bi;
+
+                 i++;
+             }
+         }
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         for (size_t i = 0; i < accessor.size(); i++) {
+             const auto di = static_cast<double>(i);
+             const auto fi = static_cast<float>(i);
+             const auto ui = static_cast<uint32_t>(i);
+             const auto ii = static_cast<int32_t>(i);
+             const auto bi = static_cast<bool>(i);
+             ASSERT(accessor.get(i) ==
+                        Ball(di, di, di, di, fi, fi, fi, ui, ii, bi),
+                    "Balls should contain default initialized balls");
+         }
+     }},
+    {"StructureOfArrays_construction3",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init(n);
+         {
+             size_t i = 0;
+             for (auto &ball : init) {
+                 const auto di = static_cast<double>(i);
+                 const auto fi = static_cast<float>(i);
+                 const auto ui = static_cast<uint32_t>(i);
+                 const auto ii = static_cast<int32_t>(i);
+                 const auto bi = static_cast<bool>(i);
+
+                 ball.get<"position_x">() = di;
+                 ball.get<"position_y">() = di;
+                 ball.get<"position_z">() = di;
+                 ball.get<"radius">() = di;
+                 ball.get<"color_r">() = fi;
+                 ball.get<"color_g">() = fi;
+                 ball.get<"color_b">() = fi;
+                 ball.get<"index">() = ui;
+                 ball.get<"index_distance">() = ii;
+                 ball.get<"is_visible">() = bi;
+
+                 i++;
+             }
+         }
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         for (size_t i = 0; i < accessor.size(); i++) {
+             const auto di = static_cast<double>(i);
+             const auto fi = static_cast<float>(i);
+             const auto ui = static_cast<uint32_t>(i);
+             const auto ii = static_cast<int32_t>(i);
+             const auto bi = static_cast<bool>(i);
+             ASSERT(accessor.get(i) ==
+                        Ball(di, di, di, di, fi, fi, fi, ui, ii, bi),
+                    "Balls should contain default initialized balls");
+         }
+     }},
+    {"StructureOfArrays_getMemReqRow1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init(n);
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         ASSERT(balls.getMemReq<"radius">() == sizeof(double) * n,
+                "Radius memory requirement should be n * sizeof(double)");
+     }},
+    {"StructureOfArrays_getMemReqRow2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init(n);
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.decreaseBy(28, true);
+
          ASSERT(
-             bytes_at_end == alignment - bytes_at_begin,
-             "Bytes at the end should be alignment - bytes at the beginning");
+             balls.getMemReq<"radius">() == sizeof(double) * (n - 28),
+             "Radius memory requirement should be (n - 28) * sizeof(double)");
      }},
-    {"AoSoa_construction2",
+    {"StructureOfArrays_getAlignedBlockSize",
      [](Result &result) {
-         constexpr size_t alignment = 1;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<char, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 128;
+         typedef Balls<alignment> Balls;
 
-         const size_t mem_req = Soa::getMemReq(n);
-         ASSERT(mem_req == 18008, "Memory requirement incorrect");
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
 
-         const std::array<uintptr_t, 5> pointers = {
-             reinterpret_cast<uintptr_t>(accessor.get<"first">()),
-             reinterpret_cast<uintptr_t>(accessor.get<"second">()),
-             reinterpret_cast<uintptr_t>(accessor.get<"third">()),
-             reinterpret_cast<uintptr_t>(accessor.get<"fourth">()),
-             reinterpret_cast<uintptr_t>(accessor.get<"fifth">()),
-         };
-
-         for (auto pointer : pointers) {
-             ASSERT((pointer & (alignment - 1)) == 0,
-                    "Pointer is not aligned correctly");
-         }
-
-         constexpr std::array<uintptr_t, 4> sizes = {
-             8000,
-             1000,
-             4000,
-             1000,
-         };
-
-         for (size_t i = 0; i < pointers.size() - 1; i++) {
-             ASSERT(pointers[i + 1] - pointers[i] == sizes[i], "Size wrong");
-         }
-
-         const uintptr_t begin = reinterpret_cast<uintptr_t>(soa.data());
-         const uintptr_t bytes_at_end = mem_req + begin - pointers[4] - 4000;
-         const uintptr_t bytes_at_begin = pointers[0] - begin;
-         ASSERT(
-             bytes_at_end == alignof(double) - bytes_at_begin,
-             "Bytes at the end should be alignment - bytes at the beginning");
+         ASSERT(balls.getAlignedBlockSize() == Balls::getMemReq(n) - alignment,
+                "Aligned block size should be equal to total memory "
+                "requirement minus alignment");
      }},
-    {"AoSoa_swap",
+    {"StructureOfArrays_alignmentBytes",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
+         std::vector<Ball> init{
+             Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
+             Ball(0.0, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-         const std::array<uintptr_t, 2> original_pointers = {
-             reinterpret_cast<uintptr_t>(accessor.get<"first">()),
-             reinterpret_cast<uintptr_t>(accessor.get<"second">()),
-         };
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         uint8_t *ptr = static_cast<uint8_t *>(balls.data());
+         ptr += balls.getAlignmentBytes();
+         const double first = *static_cast<double *>(static_cast<void *>(ptr));
 
-         soa.swap<"first", "second">();
-         soa.updateAccessor();
-
-         const std::array<uintptr_t, 2> pointers = {
-             reinterpret_cast<uintptr_t>(accessor.get<"first">()),
-             reinterpret_cast<uintptr_t>(accessor.get<"second">()),
-         };
-
-         ASSERT(original_pointers[0] == pointers[1],
-                "Pointers not swapped correctly 1");
-         ASSERT(original_pointers[1] == pointers[0],
-                "Pointers not swapped correctly 2");
+         // printf("%lu\n", balls.getAlignmentBytes());
+         ASSERT(first == 666.666, "Incorrect value read from first array");
      }},
-    {"AoSoa_get_set1",
+    {"StructureOfArrays_decreaseBy1",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 666;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-         auto original_rows = soa.getRows();
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         balls.decreaseBy(6);
 
-         constexpr size_t a = 0;
-         constexpr size_t b = 32;
-         constexpr size_t c = 555;
-
-         accessor.set(a, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
-         accessor.set(b, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
-         accessor.set(c, Soa::FullRow(1.0, 2.0, 3, true, 5.0f));
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             const bool is_default = i != a && i != b && i != c;
-             if (!is_default) {
-                 ASSERT(accessor.get(i) ==
-                            Soa::FullRow(1.0, 2.0, 3, true, 5.0f),
-                        "Incorrect value");
-             } else {
-                 ASSERT(accessor.get(i) == original_rows[i],
-                        "Incorrect default value");
-             }
-         }
+         ASSERT(accessor.size() == 666,
+                "Unupdated accessor should have original size");
      }},
-    {"AoSoa_get_set2",
+    {"StructureOfArrays_decreaseBy2",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 666;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-         auto original_rows = soa.getRows();
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         balls.decreaseBy(6, true);
 
-         constexpr size_t a = 0;
-         constexpr size_t b = 2;
-         constexpr size_t c = 55;
-
-         accessor.set<"first">(a, 5.0);
-         accessor.set<"first">(b, 666.666);
-         accessor.set<"first">(c, 321);
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             if (i == a) {
-                 ASSERT(accessor.get<"first">(i) == 5.0, "Incorrect value");
-             } else if (i == b) {
-                 ASSERT(accessor.get<"first">(i) == 666.666, "Incorrect value");
-             } else if (i == c) {
-                 ASSERT(accessor.get<"first">(i) == 321, "Incorrect value");
-             } else {
-                 ASSERT(accessor.get<"first">(i) ==
-                            original_rows[i].get<"first">(),
-                        "Incorrect default value");
-             }
-         }
+         ASSERT(accessor.size() == 660,
+                "Updated accessor should have updated size");
      }},
-    {"AoSoa_get_set3",
+    {"StructureOfArrays_decreaseBy3",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 666;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-         auto original_rows = soa.getRows();
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         balls.decreaseBy(6);
+         balls.updateAccessor();
 
-         constexpr size_t a = 0;
-         constexpr size_t b = 2;
-         constexpr size_t c = 55;
-
-         auto value = accessor.get<"first">();
-         value[a] = 1.0;
-         value[b] = 2.0;
-         value[c] = 3.0;
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             if (i == a) {
-                 ASSERT(accessor.get<"first">(i) == 1.0, "Incorrect value");
-             } else if (i == b) {
-                 ASSERT(accessor.get<"first">(i) == 2.0, "Incorrect value");
-             } else if (i == c) {
-                 ASSERT(accessor.get<"first">(i) == 3.0, "Incorrect value");
-             } else {
-                 ASSERT(accessor.get<"first">(i) ==
-                            original_rows[i].get<"first">(),
-                        "Incorrect default value");
-             }
-         }
+         ASSERT(accessor.size() == 660,
+                "Updated accessor should have updated size");
      }},
-    {"AoSoa_get_set4",
+    {"StructureOfArrays_decreaseBy4",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 666;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-         auto original_rows = soa.getRows();
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         balls.decreaseBy(3);
+         balls.decreaseBy(3, true);
 
-         constexpr size_t a = 0;
-         constexpr size_t b = 2;
-         constexpr size_t c = 55;
-
-         auto value = accessor.get<"first">();
-         value[a] = 1.0;
-         value[b] = 2.0;
-         value[c] = 3.0;
-
-         ASSERT((accessor.get<"first", a>() == 1.0), "Value incorrect");
-         ASSERT((accessor.get<"first", b>() == 2.0), "Value incorrect");
-         ASSERT((accessor.get<"first", c>() == 3.0), "Value incorrect");
-         for (size_t i = 0; i < accessor.size(); i++) {
-             if (i == a) {
-                 ASSERT((accessor.get<"first", a>() == 1.0), "Incorrect value");
-             } else if (i == b) {
-                 ASSERT((accessor.get<"first", b>() == 2.0), "Incorrect value");
-             } else if (i == c) {
-                 ASSERT((accessor.get<"first", c>() == 3.0), "Incorrect value");
-             } else {
-                 ASSERT(accessor.get<"first">(i) ==
-                            original_rows[i].get<"first">(),
-                        "Incorrect default value");
-             }
-         }
+         ASSERT(accessor.size() == 660,
+                "Updated accessor should have updated size");
      }},
-    {"AoSoa_memset1",
+    {"StructureOfArrays_swap1",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
+         std::vector<Ball> init{
+             Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
+             Ball(0.0, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-         soa.memset<"third">(std::memset, 0xFF);
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(static_cast<uint32_t>(accessor.get<"third">(i)) ==
-                        0xFFFFFFFF,
-                    "Value incorrect first");
-         }
-
-         soa.memset<"third">(std::memset, 0);
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(accessor.get<"third">(i) == 0, "Value incorrect second");
-         }
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.swap<"position_x", "position_y">();
+         ASSERT(accessor.get<"position_x">(0) == 666.666,
+                "Unupdated swap should not be visible at accessor");
      }},
-    {"AoSoa_memset2",
+    {"StructureOfArrays_swap2",
      [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
 
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
+         std::vector<Ball> init{
+             Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
+             Ball(0.0, 13.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-         soa.memset<"third">(0xFF);
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(static_cast<uint32_t>(accessor.get<"third">(i)) ==
-                        0xFFFFFFFF,
-                    "Value incorrect first");
-         }
-
-         soa.memset<"third">(0);
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(accessor.get<"third">(i) == 0, "Value incorrect second");
-         }
-     }},
-    {"AoSoa_memcpy1",
-     [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
-
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-
-         const std::vector<double> rands1([]() {
-             std::vector<double> vec(n);
-             std::random_device rd{};
-             std::mt19937 generator{rd()};
-             std::normal_distribution distribution{0.0, 1.0};
-             std::generate(vec.begin(), vec.end(),
-                           [&distribution, &generator]() {
-                               return distribution(generator);
-                           });
-             return vec;
-         }());
-
-         soa.memcpy<"first">(std::memcpy, rands1.data());
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(accessor.get<"first">(i) == rands1[i],
-                    "Incorret value first");
-         }
-
-         soa.memcpy<"second", "first">(std::memcpy);
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(accessor.get<"second">(i) == rands1[i],
-                    "Incorret value second");
-         }
-
-         std::vector<double> rands2(n);
-         soa.memcpy<"second">(std::memcpy, rands2.data());
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(rands2[i] == rands1[i], "Incorret value rands2");
-         }
-     }},
-    {"AoSoa_memcpy2",
-     [](Result &result) {
-         constexpr size_t alignment = 16;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
-
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-
-         const std::vector<double> rands1([]() {
-             std::vector<double> vec(n);
-             std::random_device rd{};
-             std::mt19937 generator{rd()};
-             std::normal_distribution distribution{0.0, 1.0};
-             std::generate(vec.begin(), vec.end(),
-                           [&distribution, &generator]() {
-                               return distribution(generator);
-                           });
-             return vec;
-         }());
-
-         soa.memcpy<"first">(rands1.data());
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(accessor.get<"first">(i) == rands1[i],
-                    "Incorret value first");
-         }
-
-         soa.memcpy<"second", "first">();
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(accessor.get<"second">(i) == rands1[i],
-                    "Incorret value second");
-         }
-
-         std::vector<double> rands2(n);
-         soa.memcpy<"second">(rands2.data());
-
-         for (size_t i = 0; i < accessor.size(); i++) {
-             ASSERT(rands2[i] == rands1[i], "Incorret value rands2");
-         }
-     }},
-    {"AoSoa_alignment_bytes",
-     [](Result &result) {
-         constexpr size_t alignment = 64;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
-
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-
-         const uintptr_t address = reinterpret_cast<uintptr_t>(soa.data());
-         const uintptr_t over_alignment = address & (alignment - 1);
-         const uintptr_t missing =
-             (alignment - over_alignment) & (alignment - 1);
-
-         ASSERT(soa.getAlignmentBytes() == missing,
-                "Incorrectly computed alignment bytes");
-     }},
-    {"AoSoa_aligned_block_size",
-     [](Result &result) {
-         constexpr size_t alignment = 64;
-         constexpr size_t n = 1000;
-         typedef StructureOfArrays<
-             alignment, Variable<double, "first">, Variable<double, "second">,
-             Variable<int, "third">, Variable<bool, "fourth">,
-             Variable<float, "fifth">>
-             Soa;
-
-         const aosoa::CMemoryOps memory_ops;
-         Soa::Accessor accessor;
-         Soa soa(memory_ops, n, &accessor);
-
-         ASSERT(alignment + soa.getAlignedBlockSize() == Soa::getMemReq(n),
-                "Incorrectly computed alignment bytes");
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.swap<"position_x", "position_y">(true);
+         ASSERT(accessor.get<"position_y">(0) == 666.666,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_x">(1) == 13.0,
+                "Updated swap should be visible at accessor");
      }},
 };
 

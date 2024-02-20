@@ -285,10 +285,10 @@ template <typename Var1, typename Var2, typename... Vars>
 struct Row<Var1, Var2, Vars...> {
     template <typename... Ts> friend struct Row;
 
-  private:
     using Type = PairTraits<Var1>::Type;
     static constexpr auto name = PairTraits<Var1>::name;
 
+  private:
     using ThisType = Row<Var1, Var2, Vars...>;
     using TailType = Row<Var2, Vars...>;
 
