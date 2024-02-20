@@ -631,85 +631,88 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     // Internal to internal
-    template <CompileTimeString Dst, CompileTimeString Src, typename F,
+    template <CompileTimeString DstName, CompileTimeString SrcName, typename F,
               typename... Args>
     auto memcpy(F f, Args... args) {
-        using Gd = GetType<Dst>;
-        using Gs = GetType<Src>;
-        static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
+        using Dst = GetType<DstName>;
+        using Src = GetType<SrcName>;
+        static_assert(IsSame<typename Dst::Type, typename Src::Type>::value,
                       "Mismatched types for memcpy");
-        static_assert(Dst != Src, "Dst and Src are the same");
+        static_assert(DstName != SrcName, "DstName and SrcName are the same");
 
-        return memcpy(f, local_accessor.pointers[Gd::i],
-                      local_accessor.pointers[Gs::i], getMemReq<Dst>(),
+        return memcpy(f, local_accessor.pointers[Dst::i],
+                      local_accessor.pointers[Src::i], getMemReq<DstName>(),
                       args...);
     }
 
     // Internal to internal
-    template <CompileTimeString Dst, CompileTimeString Src> auto memcpy() {
-        using Gd = GetType<Dst>;
-        using Gs = GetType<Src>;
-        static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
+    template <CompileTimeString DstName, CompileTimeString SrcName>
+    auto memcpy() {
+        using Dst = GetType<DstName>;
+        using Src = GetType<SrcName>;
+        static_assert(IsSame<typename Dst::Type, typename Src::Type>::value,
                       "Mismatched types for memcpy");
-        static_assert(Dst != Src, "Dst and Src are the same");
+        static_assert(DstName != SrcName, "DstName and SrcName are the same");
 
-        return memcpy(local_accessor.pointers[Gd::i],
-                      local_accessor.pointers[Gs::i], getMemReq<Dst>());
+        return memcpy(local_accessor.pointers[Dst::i],
+                      local_accessor.pointers[Src::i], getMemReq<DstName>());
     }
 
     // External to internal
-    template <CompileTimeString Dst, typename SrcType, typename F,
+    template <CompileTimeString DstName, typename SrcType, typename F,
               typename... Args>
     auto memcpy(F f, const SrcType *src, Args... args) {
-        using G = GetType<Dst>;
-        static_assert(IsSame<typename G::Type, SrcType>::value,
+        using Dst = GetType<DstName>;
+        static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(f, local_accessor.pointers[G::i],
-                      static_cast<const void *>(src), getMemReq<Dst>(),
+        return memcpy(f, local_accessor.pointers[Dst::i],
+                      static_cast<const void *>(src), getMemReq<DstName>(),
                       args...);
     }
 
     // External to internal
-    template <CompileTimeString Dst, typename SrcType>
+    template <CompileTimeString DstName, typename SrcType>
     auto memcpy(const SrcType *src) {
-        using G = GetType<Dst>;
-        static_assert(IsSame<typename G::Type, SrcType>::value,
+        using Dst = GetType<DstName>;
+        static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(local_accessor.pointers[G::i],
-                      static_cast<const void *>(src), getMemReq<Dst>());
+        return memcpy(local_accessor.pointers[Dst::i],
+                      static_cast<const void *>(src), getMemReq<DstName>());
     }
 
     // Internal to external
-    template <CompileTimeString Src, typename DstType, typename F,
+    template <CompileTimeString SrcName, typename DstType, typename F,
               typename... Args>
     auto memcpy(F f, DstType *dst, Args... args) {
-        using G = GetType<Src>;
-        static_assert(IsSame<typename G::Type, DstType>::value,
+        using Src = GetType<SrcName>;
+        static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
         return memcpy(f, static_cast<void *>(dst),
-                      local_accessor.pointers[G::i], getMemReq<Src>(), args...);
+                      local_accessor.pointers[Src::i], getMemReq<SrcName>(),
+                      args...);
     }
 
     // Internal to external
-    template <CompileTimeString Src, typename DstType>
+    template <CompileTimeString SrcName, typename DstType>
     auto memcpy(DstType *dst) {
-        using G = GetType<Src>;
-        static_assert(IsSame<typename G::Type, DstType>::value,
+        using Src = GetType<SrcName>;
+        static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(static_cast<void *>(dst), local_accessor.pointers[G::i],
-                      getMemReq<Src>());
+        return memcpy(static_cast<void *>(dst), local_accessor.pointers[Src::i],
+                      getMemReq<SrcName>());
     }
 
-    template <CompileTimeString Dst, typename F, typename... Args>
+    template <CompileTimeString DstName, typename F, typename... Args>
     auto memset(F f, int pattern, Args... args) {
-        using G = GetType<Dst>;
-        return f(local_accessor.pointers[G::i], pattern, getMemReq<Dst>(),
+        using Dst = GetType<DstName>;
+        return f(local_accessor.pointers[Dst::i], pattern, getMemReq<DstName>(),
                  args...);
     }
 
-    template <CompileTimeString Dst> auto memset(int pattern) {
-        using G = GetType<Dst>;
-        return memset(local_accessor.pointers[G::i], pattern, getMemReq<Dst>());
+    template <CompileTimeString DstName> auto memset(int pattern) {
+        using Dst = GetType<DstName>;
+        return memset(local_accessor.pointers[Dst::i], pattern,
+                      getMemReq<DstName>());
     }
 
   private:
