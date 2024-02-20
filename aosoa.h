@@ -37,11 +37,12 @@
 #define DEVICE
 #endif
 
-namespace {
-// Use 'true' and 'false' as separate types to overload a function for each case
-template <bool> struct BoolAsType {};
+namespace detail {
+// This namespace contains utility types and functions used by Row and
+// StructureOfArrays
 
-// Array usable on devices
+// ==== Array ====
+// - Usable on devices
 template <typename T, size_t N> struct Array {
     T items[N] = {};
 
@@ -53,7 +54,7 @@ template <typename T, size_t N> struct Array {
     HOST DEVICE constexpr T *data() const { return &items; }
 };
 
-// Type equality, usable on devices
+// ==== Type equality ====
 template <typename T, typename U> struct IsSame {
     constexpr static bool value = false;
 };
@@ -62,7 +63,7 @@ template <typename T> struct IsSame<T, T> {
     constexpr static bool value = true;
 };
 
-// Compile time string
+// ==== Compile time string ====
 template <size_t N> struct CompileTimeString {
     char str[N + 1] = {};
 
@@ -118,13 +119,13 @@ template <size_t N>
 CompileTimeString(const char (&)[N]) -> CompileTimeString<N - 1>;
 
 template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
-} // namespace
 
-namespace aosoa {
-// Usage: Variable<double, "foo">
+// ==== Variable ====
+// - Binds a type and a CompileTimeString together
 template <typename, CompileTimeString> struct Variable {};
 
-// Override this for cuda, hip, sycl and others
+// ==== Abstract MemoryOps interface ====
+// - Override this for C, Cuda, Hip, Sycl and others as needed
 struct MemoryOps {
     virtual void *allocate(size_t bytes) const = 0;
     virtual void deallocate(void *ptr) const = 0;
@@ -136,7 +137,7 @@ struct MemoryOps {
     virtual bool accessOnHostRequiresMemcpy() const = 0;
 };
 
-// Standard C-style operations
+// ==== CMemoryOps ====
 struct CMemoryOps : MemoryOps {
     void *allocate(size_t bytes) const { return malloc(bytes); }
     void deallocate(void *ptr) const { free(ptr); }
@@ -151,19 +152,18 @@ struct CMemoryOps : MemoryOps {
     }
     bool accessOnHostRequiresMemcpy() const { return false; }
 };
-} // namespace aosoa
 
-namespace {
-// Used to extract the type and the name from a Variable<typename,
-// CompileTimeString>
+// ==== PairTraits ====
+// - Used to extract the name and the type from a Variable<Type, Name>
 template <typename> struct PairTraits;
 template <typename T, CompileTimeString Cts>
-struct PairTraits<aosoa::Variable<T, Cts>> {
+struct PairTraits<Variable<T, Cts>> {
     using Type = T;
     static constexpr CompileTimeString name = Cts;
 };
 
-// Get the Nth type from a parameter pack of types
+// ==== NthType ====
+// - Get the Nth type from a parameter pack of types
 template <size_t N, typename... Types> struct NthType {
   private:
     template <size_t I, typename Head, typename... Tail>
@@ -182,7 +182,8 @@ template <size_t N, typename... Types> struct NthType {
     using Type = std::remove_const_t<decltype(t)>;
 };
 
-// Find the index of string from a parameter pack
+// ==== IndexOfString ====
+// - Find the index of string from a parameter pack
 template <CompileTimeString MatchStr, CompileTimeString... Strings>
 struct IndexOfString {
   private:
@@ -201,33 +202,34 @@ struct IndexOfString {
     constexpr static size_t i = index<0, Strings...>();
 };
 
-// A very simple buffer that allocates/deallocates memory with the given
+// ==== Buffer ====
+// - A very simple buffer that allocates/deallocates memory with the given
 // MemoryOps
 struct Buffer {
-    const aosoa::MemoryOps &memory_ops;
+    const MemoryOps &memory_ops;
     void *const data = nullptr;
 
-    Buffer(const aosoa::MemoryOps &mem_ops, size_t bytes)
+    Buffer(const MemoryOps &mem_ops, size_t bytes)
         : memory_ops(mem_ops), data(memory_ops.allocate(bytes)) {}
     ~Buffer() { memory_ops.deallocate(data); }
 };
-} // namespace
+} // namespace detail
 
 namespace aosoa {
-/*
- * Row represents a row from a structure of arrays layout
- * Given a structure of arrays with N arrays, the aggregation of the ith value
- * of each array represent the ith row of the structure of arrays and can be
- * instantiated as a variable of type Row.
- *
- * Row is implemented as something between a tuple and a normal struct.
- * It's a tuple in the sense that it's a recursive type, but it's a struct in
- * the sense that you can (only) access it's members by name, using a
- * templated syntax like auto foo = row.get<"foo">();
- * */
+using namespace detail;
+// ==== Row ====
+// - Row represents a row from a structure of arrays layout
+// - Given a structure of arrays with N arrays, the aggregation of the ith value
+//   of each array represent the ith row of the structure of arrays and can be
+//   instantiated as a variable of type Row.
+//
+// - Row is implemented as something between a tuple and a normal struct.
+// - It's a tuple in the sense that it's a recursive type, but it's a struct in
+//   the sense that you can (only) access it's members by name, using a
+//   templated syntax like auto foo = row.get<"foo">();
 template <typename... Vars> struct Row;
 
-// Specialize for a single type
+// Specialize Row for a single type
 template <typename Var> struct Row<Var> {
     template <typename... Ts> friend struct Row;
 
@@ -278,7 +280,7 @@ template <typename Var> struct Row<Var> {
     };
 };
 
-// Specialize for two or more types
+// Specialize Row for two or more types
 template <typename Var1, typename Var2, typename... Vars>
 struct Row<Var1, Var2, Vars...> {
     template <typename... Ts> friend struct Row;
@@ -381,9 +383,10 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
     return row.output(os) << "\n}";
 }
 
+// ==== StructureOfArrays ====
 template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
   private:
-    static_assert(aosoa::Row<Variables...>::unique_names,
+    static_assert(Row<Variables...>::unique_names,
                   "StructureOfArrays has clashing names");
 
     static constexpr size_t num_pointers = sizeof...(Variables);
@@ -397,7 +400,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
             typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
     };
 
-    using FullRow = aosoa::Row<Variables...>;
+    using FullRow = Row<Variables...>;
 
     struct Accessor {
       private:
@@ -576,10 +579,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     }
 
     template <CompileTimeString Cts1, CompileTimeString Cts2,
-              CompileTimeString... Tail>
+              CompileTimeString Cts3, CompileTimeString... Tail>
     void swap(bool update_accessor = false) {
         swap<Cts1, Cts2>();
-        swap<Tail...>();
+        swap<Cts3, Tail...>();
 
         if (update_accessor) {
             updateAccessor();
