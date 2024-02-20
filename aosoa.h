@@ -82,7 +82,7 @@ template <size_t N> struct CompileTimeString {
 
     template <size_t M>
     consteval CompileTimeString<N + M>
-    operator+(const CompileTimeString rhs) const {
+    operator+(const CompileTimeString<M> rhs) const {
         char out_str[N + 1 + M] = {};
         std::copy_n(str, N, out_str);
         std::copy_n(rhs.str, M + 1, out_str + N);
@@ -96,22 +96,22 @@ template <size_t N> struct CompileTimeString {
 
 template <size_t N, size_t M>
 consteval bool operator==(const char (&lhs)[N], CompileTimeString<M> rhs) {
-    return CompileTimeString<N>(lhs) == rhs;
+    return CompileTimeString<N - 1>(lhs) == rhs;
 }
 
 template <size_t N, size_t M>
 consteval bool operator==(CompileTimeString<N> lhs, const char (&rhs)[M]) {
-    return lhs == CompileTimeString<N>(rhs);
+    return lhs == CompileTimeString<M - 1>(rhs);
 }
 
 template <size_t N, size_t M>
-consteval auto operator+(const char (&lhs)[N + 1], CompileTimeString<M> rhs) {
-    return CompileTimeString<N>(lhs) + rhs;
+consteval auto operator+(const char (&lhs)[N], CompileTimeString<M> rhs) {
+    return CompileTimeString<N - 1>(lhs) + rhs;
 }
 
 template <size_t N, size_t M>
-consteval auto operator+(CompileTimeString<N> lhs, const char (&rhs)[M + 1]) {
-    return lhs + CompileTimeString<M>(rhs);
+consteval auto operator+(CompileTimeString<N> lhs, const char (&rhs)[M]) {
+    return lhs + CompileTimeString<M - 1>(rhs);
 }
 
 // Deduction guide
@@ -638,6 +638,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using Gs = GetType<Src>;
         static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
                       "Mismatched types for memcpy");
+        static_assert(Dst != Src, "Dst and Src are the same");
 
         return memcpy(f, local_accessor.pointers[Gd::i],
                       local_accessor.pointers[Gs::i], getMemReq<Dst>(),
@@ -650,6 +651,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         using Gs = GetType<Src>;
         static_assert(IsSame<typename Gd::Type, typename Gs::Type>::value,
                       "Mismatched types for memcpy");
+        static_assert(Dst != Src, "Dst and Src are the same");
 
         return memcpy(local_accessor.pointers[Gd::i],
                       local_accessor.pointers[Gs::i], getMemReq<Dst>());
