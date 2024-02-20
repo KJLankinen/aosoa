@@ -8,12 +8,13 @@
 using namespace aosoa;
 
 // TODO:
-// StructureOfArrays tests with Balls
-//
-// Buffer test:
+// Test with DummyDeviceMemoryOps
+// Test NthType
+// Test IndexOfString
+// Test Buffer
 // - constructing and freeing in a loop to see memory usage
 // - a throwing constructor for a type that uses buffer: see if deallocation
-// works correctly sycl/cuda/hip testing
+//   works correctly sycl/cuda/hip testing
 
 void soa() {
     typedef aosoa::StructureOfArrays<128, aosoa::Variable<bool, "is_visible">,
@@ -110,6 +111,54 @@ using Balls = StructureOfArrays<Alignment,
 
 template <size_t Alignment> using Ball = Balls<Alignment>::FullRow;
 const aosoa::CMemoryOps memory_ops = {};
+
+// accessOnHostRequiresMemcpy returns true for this
+struct DummyDeviceMemoryOps : MemoryOps {
+    void *allocate(size_t bytes) const { return malloc(bytes); }
+    void deallocate(void *ptr) const { free(ptr); }
+    void memcpy(void *dst, const void *src, size_t bytes, bool) const {
+        std::memcpy(dst, src, bytes);
+    }
+    void memset(void *dst, int pattern, size_t bytes, bool) const {
+        std::memset(dst, pattern, bytes);
+    }
+    void update(void *dst, const void *src, size_t bytes) const {
+        std::memcpy(dst, src, bytes);
+    }
+    bool accessOnHostRequiresMemcpy() const { return true; }
+};
+
+template <size_t Alignment, CompileTimeString Cts>
+void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
+                            typename Balls<Alignment>::Accessor &balls,
+                            Result &result) {
+    bool success = false;
+    std::string msg;
+    for (size_t i = 0; i < init.size(); i++) {
+        success = balls.template get<Cts>(i) == init[i].template get<Cts>();
+        msg = (Cts + " incorrect").str;
+        if (!success) {
+            result = Result{false, msg};
+            return;
+        }
+    }
+}
+
+template <size_t Alignment, CompileTimeString Cts, CompileTimeString Head,
+          CompileTimeString... Tail>
+void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
+                            typename Balls<Alignment>::Accessor &balls,
+                            Result &result) {
+    assertUntouchedCorrect<Alignment, Cts>(init, balls, result);
+    if (result.success) {
+        assertUntouchedCorrect<Alignment, Head>(init, balls, result);
+        if constexpr (sizeof...(Tail) > 0) {
+            if (result.success) {
+                assertUntouchedCorrect<Alignment, Tail...>(init, balls, result);
+            }
+        }
+    }
+}
 
 constexpr static Test tests[]{
     {"sizeof(RowSingle)",
@@ -483,6 +532,7 @@ constexpr static Test tests[]{
                     "Balls should contain default initialized balls");
          }
      }},
+    // TODO construction with DummyDeviceMemoryOps
     {"StructureOfArrays_getMemReqRow1",
      [](Result &result) {
          constexpr size_t alignment = 128;
@@ -633,6 +683,471 @@ constexpr static Test tests[]{
          ASSERT(accessor.get<"position_x">(1) == 13.0,
                 "Updated swap should be visible at accessor");
      }},
+    {"StructureOfArrays_swap3",
+     [](Result &result) {
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
+             Ball(0.0, 13.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.swap<"position_x", "position_y">();
+         balls.updateAccessor();
+
+         ASSERT(accessor.get<"position_y">(0) == 666.666,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_x">(1) == 13.0,
+                "Updated swap should be visible at accessor");
+     }},
+    {"StructureOfArrays_swap4",
+     [](Result &result) {
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         balls.swap<"position_x", "position_y", "position_z", "radius">(true);
+
+         ASSERT(accessor.get<"position_x">(0) == 1.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_y">(0) == 0.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_z">(0) == 3.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"radius">(0) == 2.0,
+                "Updated swap should be visible at accessor");
+
+         ASSERT(accessor.get<"position_x">(1) == 10.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_y">(1) == 9.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_z">(1) == 12.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"radius">(1) == 11.0,
+                "Updated swap should be visible at accessor");
+     }},
+    {"StructureOfArrays_swap5",
+     [](Result &result) {
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         balls.swap<"position_x", "position_y", "position_y", "position_z">(
+             true);
+
+         ASSERT(accessor.get<"position_x">(0) == 1.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_y">(0) == 2.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_z">(0) == 0.0,
+                "Updated swap should be visible at accessor");
+
+         ASSERT(accessor.get<"position_x">(1) == 10.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_y">(1) == 11.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_z">(1) == 9.0,
+                "Updated swap should be visible at accessor");
+     }},
+    {"StructureOfArrays_swap6",
+     [](Result &result) {
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         balls.swap<"position_x", "position_y", "position_y", "position_z">();
+
+         ASSERT(accessor.get<"position_x">(0) == 0.0,
+                "Updated swap should not be visible at accessor");
+         ASSERT(accessor.get<"position_y">(0) == 1.0,
+                "Updated swap should not be visible at accessor");
+         ASSERT(accessor.get<"position_z">(0) == 2.0,
+                "Updated swap should not be visible at accessor");
+
+         ASSERT(accessor.get<"position_x">(1) == 9.0,
+                "Updated swap should not be visible at accessor");
+         ASSERT(accessor.get<"position_y">(1) == 10.0,
+                "Updated swap should not be visible at accessor");
+         ASSERT(accessor.get<"position_z">(1) == 11.0,
+                "Updated swap should not be visible at accessor");
+     }},
+    {"StructureOfArrays_swap7",
+     [](Result &result) {
+         constexpr size_t alignment = 2048;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+
+         balls.swap<"position_x", "position_y", "position_y", "position_z">();
+         balls.updateAccessor();
+
+         ASSERT(accessor.get<"position_x">(0) == 1.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_y">(0) == 2.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_z">(0) == 0.0,
+                "Updated swap should be visible at accessor");
+
+         ASSERT(accessor.get<"position_x">(1) == 10.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_y">(1) == 11.0,
+                "Updated swap should be visible at accessor");
+         ASSERT(accessor.get<"position_z">(1) == 9.0,
+                "Updated swap should be visible at accessor");
+     }},
+    {"StructureOfArrays_updateAccessor1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 666;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         balls.decreaseBy(6);
+         balls.updateAccessor(std::memcpy);
+
+         ASSERT(accessor.size() == 660,
+                "Updated accessor should have updated size");
+     }},
+    // TODO getRows with and without DummyDeviceMemoryOps
+    {"StructureOfArrays_memcpy_internal_to_internal1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.memcpy<"position_y", "position_x">();
+
+         ASSERT(accessor.get<"position_x">(0) == 0.0,
+                "position_x[0] incorrect");
+         ASSERT(accessor.get<"position_x">(1) == 9.0,
+                "position_x[1] incorrect");
+         ASSERT(accessor.get<"position_y">(0) == 0.0,
+                "position_y[0] incorrect");
+         ASSERT(accessor.get<"position_y">(1) == 9.0,
+                "position_y[1] incorrect");
+
+         assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                                "color_g", "color_b", "index", "index_distance",
+                                "is_visible">(init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memcpy_internal_to_internal2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.memcpy<"position_y", "position_x">(std::memcpy);
+
+         ASSERT(accessor.get<"position_x">(0) == 0.0,
+                "position_x[0] incorrect");
+         ASSERT(accessor.get<"position_x">(1) == 9.0,
+                "position_x[1] incorrect");
+         ASSERT(accessor.get<"position_y">(0) == 0.0,
+                "position_y[0] incorrect");
+         ASSERT(accessor.get<"position_y">(1) == 9.0,
+                "position_y[1] incorrect");
+
+         assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                                "color_g", "color_b", "index", "index_distance",
+                                "is_visible">(init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memcpy_internal_compile_fail_if_enabled",
+     [](Result &) {
+         constexpr size_t alignment = 128;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, 1, &accessor);
+         // Uncommenting the line below should give a compiler error
+         // balls.memcpy<"position_x", "position_x">(std::memcpy);
+     }},
+    {"StructureOfArrays_memcpy_external_to_internal1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         const std::vector<double> src{0.0, 9.0};
+         balls.memcpy<"position_y">(src.data());
+
+         ASSERT(accessor.get<"position_x">(0) == 0.0,
+                "position_x[0] incorrect");
+         ASSERT(accessor.get<"position_x">(1) == 9.0,
+                "position_x[1] incorrect");
+         ASSERT(accessor.get<"position_y">(0) == 0.0,
+                "position_y[0] incorrect");
+         ASSERT(accessor.get<"position_y">(1) == 9.0,
+                "position_y[1] incorrect");
+
+         assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                                "color_g", "color_b", "index", "index_distance",
+                                "is_visible">(init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memcpy_external_to_internal2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         const std::vector<double> src{0.0, 9.0};
+         balls.memcpy<"position_y">(src.data());
+
+         ASSERT(accessor.get<"position_x">(0) == 0.0,
+                "position_x[0] incorrect");
+         ASSERT(accessor.get<"position_x">(1) == 9.0,
+                "position_x[1] incorrect");
+         ASSERT(accessor.get<"position_y">(0) == 0.0,
+                "position_y[0] incorrect");
+         ASSERT(accessor.get<"position_y">(1) == 9.0,
+                "position_y[1] incorrect");
+
+         assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                                "color_g", "color_b", "index", "index_distance",
+                                "is_visible">(init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memcpy_internal_to_external1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         std::vector<double> dst{666.0, 666.0};
+         balls.memcpy<"position_y">(dst.data());
+
+         ASSERT(dst[0] == init[0].get<"position_y">(), "dst[0] incorrect");
+         ASSERT(dst[1] == init[1].get<"position_y">(), "dst[1] incorrect");
+
+         assertUntouchedCorrect<alignment, "position_x", "position_y",
+                                "position_z", "radius", "color_r", "color_g",
+                                "color_b", "index", "index_distance",
+                                "is_visible">(init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memcpy_internal_to_external2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         std::vector<double> dst{666.0, 666.0};
+         balls.memcpy<"position_y">(std::memcpy, dst.data());
+
+         ASSERT(dst[0] == init[0].get<"position_y">(), "dst[0] incorrect");
+         ASSERT(dst[1] == init[1].get<"position_y">(), "dst[1] incorrect");
+
+         assertUntouchedCorrect<alignment, "position_x", "position_y",
+                                "position_z", "radius", "color_r", "color_g",
+                                "color_b", "index", "index_distance",
+                                "is_visible">(init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memset1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.memset<"index">(0);
+         ASSERT(accessor.get<"index">(0) == 0, "index[0] set incorrectly");
+         ASSERT(accessor.get<"index">(1) == 0, "index[1] set incorrectly");
+
+         assertUntouchedCorrect<alignment, "position_x", "position_y",
+                                "position_z", "radius", "color_r", "color_g",
+                                "color_b", "index_distance", "is_visible">(
+             init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memset2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17, true)};
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.memset<"index">(std::memset, 0);
+         ASSERT(accessor.get<"index">(0) == 0, "index[0] set incorrectly");
+         ASSERT(accessor.get<"index">(1) == 0, "index[1] set incorrectly");
+
+         assertUntouchedCorrect<alignment, "position_x", "position_y",
+                                "position_z", "radius", "color_r", "color_g",
+                                "color_b", "index_distance", "is_visible">(
+             init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memset3",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+         };
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         balls.decreaseBy(10, true);
+         balls.memset<"index">(0);
+
+         // Only the first should be set, since size was decreased
+         ASSERT(accessor.get<"index">(0) == 0, "index[0] set incorrectly");
+         ASSERT(accessor.get<"index">(1) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(2) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(3) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(4) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(5) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(6) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(7) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(8) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(9) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(10) == 7u, "index[1] set incorrectly");
+
+         assertUntouchedCorrect<alignment, "position_x", "position_y",
+                                "position_z", "radius", "color_r", "color_g",
+                                "color_b", "index_distance", "is_visible">(
+             init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_memset4",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+         };
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         // This is false, so accessor is not updated, but still the memset
+         // should've gone through
+         balls.decreaseBy(10);
+         balls.memset<"index">(0);
+
+         // Only the first should be set, since size was decreased
+         ASSERT(accessor.get<"index">(0) == 0, "index[0] set incorrectly");
+         ASSERT(accessor.get<"index">(1) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(2) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(3) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(4) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(5) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(6) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(7) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(8) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(9) == 7u, "index[1] set incorrectly");
+         ASSERT(accessor.get<"index">(10) == 7u, "index[1] set incorrectly");
+
+         assertUntouchedCorrect<alignment, "position_x", "position_y",
+                                "position_z", "radius", "color_r", "color_g",
+                                "color_b", "index_distance", "is_visible">(
+             init, accessor, result);
+         ASSERT(result.success, result.msg);
+     }},
+    // TODO test that pointers are set correctly: get the pointers through
+    // accessor and assert they're correctly aligned
 };
 
 int main(int, char **) {
