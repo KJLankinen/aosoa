@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <tabulate/table.hpp>
 #include <vector>
 
 using namespace aosoa;
@@ -132,15 +133,9 @@ template <size_t Alignment, CompileTimeString Cts>
 void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
                             typename Balls<Alignment>::Accessor &balls,
                             Result &result) {
-    bool success = false;
-    std::string msg;
     for (size_t i = 0; i < init.size(); i++) {
-        success = balls.template get<Cts>(i) == init[i].template get<Cts>();
-        msg = (Cts + " incorrect").str;
-        if (!success) {
-            result = Result{false, msg};
-            return;
-        }
+        ASSERT(balls.template get<Cts>(i) == init[i].template get<Cts>(),
+               (Cts + " incorrect").str);
     }
 }
 
@@ -155,6 +150,31 @@ void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
         if constexpr (sizeof...(Tail) > 0) {
             if (result.success) {
                 assertUntouchedCorrect<Alignment, Tail...>(init, balls, result);
+            }
+        }
+    }
+}
+
+template <size_t S, CompileTimeString Cts>
+void assertAligned(typename Balls<S>::Accessor &balls, Result &result,
+                   size_t alignment) {
+    constexpr size_t max_size_t = ~0ul;
+    size_t space = max_size_t;
+    void *ptr = balls.template get<Cts>();
+    std::align(alignment, 1, ptr, space);
+    ASSERT(space == max_size_t, ("Incorrect alignment for " + Cts).str);
+}
+
+template <size_t S, CompileTimeString Cts, CompileTimeString Head,
+          CompileTimeString... Tail>
+void assertAligned(typename Balls<S>::Accessor &balls, Result &result,
+                   size_t alignment) {
+    assertAligned<S, Cts>(balls, result, alignment);
+    if (result.success) {
+        assertAligned<S, Head>(balls, result, alignment);
+        if constexpr (sizeof...(Tail) > 0) {
+            if (result.success) {
+                assertAligned<S, Tail...>(balls, result, alignment);
             }
         }
     }
@@ -1146,15 +1166,109 @@ constexpr static Test tests[]{
              init, accessor, result);
          ASSERT(result.success, result.msg);
      }},
-    // TODO test that pointers are set correctly: get the pointers through
-    // accessor and assert they're correctly aligned
+    {"StructureOfArrays_aligned_pointers1",
+     [](Result &result) {
+         constexpr size_t alignment = 1;
+         constexpr size_t n = 1000;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         assertAligned<alignment, "position_x", "position_y", "position_z",
+                       "radius", "color_r", "color_g", "color_b", "index",
+                       "index_distance", "is_visible">(accessor, result,
+                                                       sizeof(double));
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_aligned_pointers2",
+     [](Result &result) {
+         constexpr size_t alignment = 2;
+         constexpr size_t n = 1000;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         assertAligned<alignment, "position_x", "position_y", "position_z",
+                       "radius", "color_r", "color_g", "color_b", "index",
+                       "index_distance", "is_visible">(accessor, result,
+                                                       sizeof(double));
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_aligned_pointers3",
+     [](Result &result) {
+         constexpr size_t alignment = 4;
+         constexpr size_t n = 1000;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         assertAligned<alignment, "position_x", "position_y", "position_z",
+                       "radius", "color_r", "color_g", "color_b", "index",
+                       "index_distance", "is_visible">(accessor, result,
+                                                       sizeof(double));
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_aligned_pointers4",
+     [](Result &result) {
+         constexpr size_t alignment = 8;
+         constexpr size_t n = 1000;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         assertAligned<alignment, "position_x", "position_y", "position_z",
+                       "radius", "color_r", "color_g", "color_b", "index",
+                       "index_distance", "is_visible">(accessor, result,
+                                                       alignment);
+         ASSERT(result.success, result.msg);
+     }},
+    {"StructureOfArrays_aligned_pointers5",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         constexpr size_t n = 1000;
+         typedef Balls<alignment> Balls;
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, n, &accessor);
+         assertAligned<alignment, "position_x", "position_y", "position_z",
+                       "radius", "color_r", "color_g", "color_b", "index",
+                       "index_distance", "is_visible">(accessor, result,
+                                                       alignment);
+         ASSERT(result.success, result.msg);
+     }},
 };
 
 int main(int, char **) {
+    tabulate::Table successful_tests;
+    tabulate::Table failed_tests;
+
     for (auto [test_name, test] : tests) {
         Result result{};
         test(result);
-        printf("%s %s%s\n", result.success ? "OK  " : "FAIL", test_name,
-               result.success ? "" : (" \"" + result.msg + "\"").c_str());
+        if (result.success) {
+            successful_tests.add_row({"OK", test_name});
+        } else {
+            failed_tests.add_row({"FAIL", test_name, "\"" + result.msg + "\""});
+        }
     }
+
+    successful_tests.format()
+        .border_top("")
+        .border_bottom("")
+        .border_left("")
+        .border_right("")
+        .corner("");
+
+    failed_tests.format()
+        .border_top("")
+        .border_bottom("")
+        .border_left("")
+        .border_right("")
+        .corner("");
+
+    successful_tests.column(0).format().font_color(tabulate::Color::green);
+    failed_tests.column(0).format().font_color(tabulate::Color::red);
+
+    std::cout << "Successful tests\n" << successful_tests << "\n" << std::endl;
+    std::cout << "Failed tests\n" << failed_tests << std::endl;
 }

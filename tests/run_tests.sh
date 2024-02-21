@@ -20,6 +20,7 @@ g++ $base_dir/tests/tests.cpp \
     -Wsign-conversion \
     -Wconversion \
     -O2 \
+    -isystem "include/tabulate/include" \
     && ./$out_bin
 
 rm -rf $out_bin \
