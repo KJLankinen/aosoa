@@ -178,7 +178,6 @@ template <size_t N, typename... Types> struct NthType {
     static constexpr auto t = ofType<0, Types...>();
 
   public:
-    // no std?
     using Type = std::remove_const_t<decltype(t)>;
 };
 
@@ -187,7 +186,7 @@ template <size_t N, typename... Types> struct NthType {
 template <CompileTimeString MatchStr, CompileTimeString... Strings>
 struct IndexOfString {
   private:
-    template <size_t N> consteval static size_t index() { return N; }
+    template <size_t N> consteval static size_t index() { return ~0ul; }
 
     template <size_t N, CompileTimeString Head, CompileTimeString... Tail>
     consteval static size_t index() {
@@ -200,6 +199,14 @@ struct IndexOfString {
 
   public:
     constexpr static size_t i = index<0, Strings...>();
+};
+
+// ==== FindString ====
+// - Check if the string is in the parameter pack
+template <CompileTimeString MatchStr, CompileTimeString... Strings>
+struct FindString {
+    constexpr static bool value =
+        IndexOfString<MatchStr, Strings...>::i != IndexOfString<MatchStr>::i;
 };
 
 // ==== Buffer ====
@@ -342,39 +349,16 @@ struct Row<Var1, Var2, Vars...> {
     // ==== Uniqueness of names ====
     // Asserting at compile time that all the names in the template parameters
     // are unique.
-    //
-    // IndexOfString takes a string to match and a parameter pack of strings and
-    // finds the index of the match string from the  parameter pack. Given that
-    // the parameter pack does not contain the match string, the returned index
-    // should be the size of the parameter pack. Thus, if the index of string
-    // is the size of the parameter pack, the first string is unique.
-    template <size_t IndexOfStr, size_t SizeOfParamPack> struct EqualIndices {
-        constexpr static bool value = IndexOfStr == SizeOfParamPack;
-    };
-
-    // +1 so the clashing index takes Var1 into account, i.e. i == 1 points to
-    // Var2, not to the first of Vars...
-    constexpr static size_t index_of_var1 =
-        IndexOfString<PairTraits<Var1>::name, PairTraits<Var2>::name,
-                      PairTraits<Vars>::name...>::i +
-        1;
-
-    // +1 because Var2 is not a part of Vars... but is a part of the string
-    // parameter pack given to IndexOfString.
-    // Another +1 so the clashing index takes Var1 into account, i.e. i == 1
-    // points to Var2, not to the first of Vars...
-    constexpr static size_t num_strings = sizeof...(Vars) + 2;
-
-    // The tail structures do this to their own strings, i.e. Var2 is compared
-    // to Vars... and so on recursively
-    static_assert(EqualIndices<index_of_var1, num_strings>::value,
-                  "Found a clashing name at the index I of EqualIndices<I, J>");
+    static_assert(!FindString<PairTraits<Var1>::name, PairTraits<Var2>::name,
+                              PairTraits<Vars>::name...>::value,
+                  "Found a clashing name");
 
   public:
     // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
-        EqualIndices<index_of_var1, num_strings>::value;
+        !FindString<PairTraits<Var1>::name, PairTraits<Var2>::name,
+                    PairTraits<Vars>::name...>::value;
 };
 
 template <typename... Vars>
