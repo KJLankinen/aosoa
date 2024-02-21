@@ -9,9 +9,6 @@
 using namespace aosoa;
 
 // TODO:
-// Test with DummyDeviceMemoryOps
-// Test NthType
-// Test IndexOfString
 // Test Buffer
 // - constructing and freeing in a loop to see memory usage
 // - a throwing constructor for a type that uses buffer: see if deallocation
@@ -113,7 +110,6 @@ using Balls = StructureOfArrays<Alignment,
 template <size_t Alignment> using Ball = Balls<Alignment>::FullRow;
 const aosoa::CMemoryOps memory_ops = {};
 
-// accessOnHostRequiresMemcpy returns true for this
 struct DummyDeviceMemoryOps : MemoryOps {
     void *allocate(size_t bytes) const { return malloc(bytes); }
     void deallocate(void *ptr) const { free(ptr); }
@@ -126,6 +122,7 @@ struct DummyDeviceMemoryOps : MemoryOps {
     void update(void *dst, const void *src, size_t bytes) const {
         std::memcpy(dst, src, bytes);
     }
+    // accessOnHostRequiresMemcpy returns true for this
     bool accessOnHostRequiresMemcpy() const { return true; }
 };
 
@@ -444,7 +441,8 @@ constexpr static Test tests[]{
 
          for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(accessor.get(i) == Ball{},
-                    "Balls should contain default initialized balls");
+                    "Ball at index " + std::to_string(i) +
+                        " should be equal to Ball{} but is not");
          }
      }},
     {"StructureOfArrays_construction2",
@@ -459,7 +457,8 @@ constexpr static Test tests[]{
 
          for (size_t i = 0; i < accessor.size(); i++) {
              ASSERT(accessor.get(i) == Ball{},
-                    "Balls should contain default initialized balls");
+                    "Ball at index " + std::to_string(i) +
+                        " should be equal to Ball{} but is not");
          }
      }},
     {"StructureOfArrays_construction3",
@@ -504,55 +503,40 @@ constexpr static Test tests[]{
              const auto bi = static_cast<bool>(i);
              ASSERT(accessor.get(i) ==
                         Ball(di, di, di, di, fi, fi, fi, ui, ii, bi),
-                    "Balls should contain default initialized balls");
+                    "Ball at index " + std::to_string(i) +
+                        " contains incorrect data");
          }
      }},
-    {"StructureOfArrays_construction3",
+    {"StructureOfArrays_construction4",
      [](Result &result) {
          constexpr size_t alignment = 128;
-         constexpr size_t n = 128;
          typedef Ball<alignment> Ball;
          typedef Balls<alignment> Balls;
 
-         std::vector<Ball> init(n);
-         {
-             size_t i = 0;
-             for (auto &ball : init) {
-                 const auto di = static_cast<double>(i);
-                 const auto fi = static_cast<float>(i);
-                 const auto ui = static_cast<uint32_t>(i);
-                 const auto ii = static_cast<int32_t>(i);
-                 const auto bi = static_cast<bool>(i);
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+         };
 
-                 ball.get<"position_x">() = di;
-                 ball.get<"position_y">() = di;
-                 ball.get<"position_z">() = di;
-                 ball.get<"radius">() = di;
-                 ball.get<"color_r">() = fi;
-                 ball.get<"color_g">() = fi;
-                 ball.get<"color_b">() = fi;
-                 ball.get<"index">() = ui;
-                 ball.get<"index_distance">() = ii;
-                 ball.get<"is_visible">() = bi;
-
-                 i++;
-             }
-         }
+         // Using dummy memory ops that uses another copy
+         const DummyDeviceMemoryOps dummy_memory_ops;
          Balls::Accessor accessor;
-         Balls balls(memory_ops, init, &accessor);
+         Balls balls(dummy_memory_ops, init, &accessor);
 
-         for (size_t i = 0; i < accessor.size(); i++) {
-             const auto di = static_cast<double>(i);
-             const auto fi = static_cast<float>(i);
-             const auto ui = static_cast<uint32_t>(i);
-             const auto ii = static_cast<int32_t>(i);
-             const auto bi = static_cast<bool>(i);
-             ASSERT(accessor.get(i) ==
-                        Ball(di, di, di, di, fi, fi, fi, ui, ii, bi),
-                    "Balls should contain default initialized balls");
+         for (size_t i = 0; i < init.size(); i++) {
+             ASSERT(accessor.get(i) == init[i],
+                    "accessor.get(i) != init[i] at index " + std::to_string(i));
          }
      }},
-    // TODO construction with DummyDeviceMemoryOps
     {"StructureOfArrays_getMemReqRow1",
      [](Result &result) {
          constexpr size_t alignment = 128;
@@ -859,7 +843,73 @@ constexpr static Test tests[]{
          ASSERT(accessor.size() == 660,
                 "Updated accessor should have updated size");
      }},
-    // TODO getRows with and without DummyDeviceMemoryOps
+    {"StructureOfArrays_getRows1",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         const std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+         };
+
+         Balls::Accessor accessor;
+         Balls balls(memory_ops, init, &accessor);
+         const auto rows = balls.getRows();
+
+         ASSERT(rows.size() == init.size(),
+                "Initial data and copied data sizes are not equal");
+
+         for (size_t i = 0; i < rows.size(); i++) {
+             ASSERT(rows[i] == init[i],
+                    "rows[i] != init[i] at index " + std::to_string(i));
+         }
+     }},
+    {"StructureOfArrays_getRows2",
+     [](Result &result) {
+         constexpr size_t alignment = 128;
+         typedef Ball<alignment> Ball;
+         typedef Balls<alignment> Balls;
+
+         std::vector<Ball> init{
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+             Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
+         };
+
+         // Using dummy memory ops that uses another copy
+         const DummyDeviceMemoryOps dummy_memory_ops;
+         Balls::Accessor accessor;
+         Balls balls(dummy_memory_ops, init, &accessor);
+         const auto rows = balls.getRows();
+
+         ASSERT(rows.size() == init.size(),
+                "Initial data and copied data sizes are not equal");
+
+         std::string msg = "";
+         for (size_t i = 0; i < rows.size(); i++) {
+             ASSERT(rows[i] == init[i],
+                    "rows[i] != init[i] at index " + std::to_string(i));
+         }
+     }},
     {"StructureOfArrays_memcpy_internal_to_internal1",
      [](Result &result) {
          constexpr size_t alignment = 128;
@@ -1235,6 +1285,55 @@ constexpr static Test tests[]{
                        "index_distance", "is_visible">(accessor, result,
                                                        alignment);
          ASSERT(result.success, result.msg);
+     }},
+    {"NthType",
+     [](Result &) {
+         static_assert(
+             std::is_same<typename NthType<0, double, float, int>::Type,
+                          double>::value,
+             "0th type should be double");
+         static_assert(
+             std::is_same<typename NthType<1, double, float, int>::Type,
+                          float>::value,
+             "1st type should be float");
+         static_assert(
+             std::is_same<typename NthType<2, double, float, int>::Type,
+                          int>::value,
+             "2nd type should be int");
+     }},
+    {"IndexOfString",
+     [](Result &) {
+         static_assert(
+             0ul ==
+                 IndexOfString<"foo"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::i,
+             "Index of foo should be 0");
+         static_assert(
+             1ul ==
+                 IndexOfString<"bar"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::i,
+             "Index of bar should be 1");
+         static_assert(
+             2ul ==
+                 IndexOfString<"baz"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::i,
+             "Index of baz should be 2");
+         static_assert(
+             ~0ul ==
+                 IndexOfString<"nope"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::i,
+             "Index of nope should be ~0ul");
+     }},
+    {"FindString",
+     [](Result &) {
+         static_assert(
+             FindString<"foo"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::value,
+             "foo should be found");
+         static_assert(
+             FindString<"bar"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::value,
+             "bar should be found");
+         static_assert(
+             FindString<"baz"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::value,
+             "baz should be found");
+         static_assert(!FindString<"not_found"_cts, "foo"_cts, "bar"_cts,
+                                   "baz"_cts>::value,
+                       "not_found should not be found");
      }},
 };
 
