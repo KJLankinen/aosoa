@@ -24,8 +24,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <ostream>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -149,8 +149,8 @@ struct MemoryOps {
 
 // ==== CMemoryOps ====
 struct CMemoryOps : MemoryOps {
-    void *allocate(size_t bytes) const { return malloc(bytes); }
-    void deallocate(void *ptr) const { free(ptr); }
+    void *allocate(size_t bytes) const { return std::malloc(bytes); }
+    void deallocate(void *ptr) const { std::free(ptr); }
     void memcpy(void *dst, const void *src, size_t bytes, bool) const {
         std::memcpy(dst, src, bytes);
     }
@@ -225,7 +225,11 @@ struct Buffer {
     void *const data = nullptr;
 
     Buffer(const MemoryOps &mem_ops, size_t bytes)
-        : memory_ops(mem_ops), data(memory_ops.allocate(bytes)) {}
+        : memory_ops(mem_ops), data(memory_ops.allocate(bytes)) {
+        if (data == nullptr) {
+            throw std::bad_alloc();
+        }
+    }
     ~Buffer() { memory_ops.deallocate(data); }
 };
 } // namespace detail
@@ -478,24 +482,23 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
     Accessor *const remote_accessor = nullptr;
 
   public:
+    StructureOfArrays(const MemoryOps &mem_ops, size_t n, Accessor *accessor)
+        : memory_ops(mem_ops), max_num_elements(n),
+          buffer(memory_ops, getMemReq(max_num_elements)),
+          local_accessor(
+              max_num_elements,
+              makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
+                  buffer.data, Pointers{}, ~0ul, max_num_elements)),
+          remote_accessor(accessor) {
+        updateAccessor();
+        memory_ops.memset(buffer.data, 0, getMemReq(max_num_elements), true);
+    }
+
+    // If the number of elements is very large, use the above constructor and
+    // initialize the values in place to avoid running out of memory
     StructureOfArrays(const MemoryOps &mem_ops,
                       const std::vector<FullRow> &rows, Accessor *accessor)
-        : memory_ops(mem_ops), max_num_elements(rows.size()),
-          buffer(memory_ops, getMemReq(max_num_elements)),
-          remote_accessor(accessor) {
-        // Abort if buffer failed
-        if (buffer.data == nullptr) {
-            throw std::runtime_error("Buffer couldn't allocate memory");
-        }
-        // Setup the accessor
-        local_accessor = Accessor(
-            max_num_elements,
-            makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                buffer.data, Pointers{}, ~0ul, max_num_elements));
-
-        updateAccessor();
-
-        // Initialize the memory with the given vector
+        : StructureOfArrays(mem_ops, rows.size(), accessor) {
         if (memory_ops.accessOnHostRequiresMemcpy()) {
             CMemoryOps c_mem_ops;
             Accessor a;
@@ -511,9 +514,6 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
             }
         }
     }
-
-    StructureOfArrays(const MemoryOps &mem_ops, size_t n, Accessor *accessor)
-        : StructureOfArrays(mem_ops, std::vector<FullRow>(n), accessor) {}
 
     [[nodiscard]] static size_t getMemReq(size_t n) {
         // Get proper begin alignment: the strictest (largest) alignment
