@@ -127,13 +127,22 @@ template <typename, CompileTimeString> struct Variable {};
 // ==== Abstract MemoryOps interface ====
 // - Override this for C, Cuda, Hip, Sycl and others as needed
 struct MemoryOps {
+    // Used to allocate the memory used by StructureOfArrays
     virtual void *allocate(size_t bytes) const = 0;
+    // Used to deallocate the memory used by StructureOfArrays
     virtual void deallocate(void *ptr) const = 0;
+    // Used to copy the memory used by StructureOfArrays to/from pointers
+    // internal or external to StructureOfArrays
     virtual void memcpy(void *dst, const void *src, size_t bytes,
                         bool synchronous = true) const = 0;
+    // Used to set the memory used by StructureOfArrays
     virtual void memset(void *dst, int pattern, size_t bytes,
                         bool synchronous = true) const = 0;
+    // Used to update the remote_accessor of StructureOfArrays
     virtual void update(void *dst, const void *src, size_t bytes) const = 0;
+    // Whether or not accessing the data with the accessor on host requires a
+    // memcpy. In other words, are the data and the StructureOfArrays in the
+    // same memory space?
     virtual bool accessOnHostRequiresMemcpy() const = 0;
 };
 
