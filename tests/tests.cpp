@@ -130,7 +130,7 @@ void assertAligned(typename Balls<S>::Accessor &balls, Result &result,
     }
 }
 
-constexpr static std::array<Test, 74> tests = {
+constexpr static std::array tests = {
     Test("sizeof(RowSingle)",
          [](Result &) { static_assert(sizeof(RowSingle) == sizeof(float)); }),
     Test("sizeof(RowDouble)",
@@ -1315,6 +1315,65 @@ constexpr static std::array<Test, 74> tests = {
              static_assert(!FindString<"not_found"_cts, "foo"_cts, "bar"_cts,
                                        "baz"_cts>::value,
                            "not_found should not be found");
+         }),
+    Test("FailAllocation_length_error",
+         [](Result &result) {
+             try {
+                 constexpr size_t alignment = 128;
+                 typedef Ball<alignment> Ball;
+                 typedef Balls<alignment> Balls;
+                 std::vector<Ball> init;
+                 const size_t n = init.max_size() + 1;
+
+                 Balls::Accessor accessor;
+                 Balls balls(memory_ops, std::vector<Ball>(n), &accessor);
+             } catch (std::length_error &e) {
+                 constexpr CompileTimeString substr = "max_size"_cts;
+                 const auto pos = std::string(e.what()).find(substr.str);
+                 ASSERT(
+                     pos != std::string::npos,
+                     ("Exception should contain the substr \"" + substr + "\"")
+                         .str);
+             } catch (const std::exception &e) {
+                 ASSERT(false, std::string("Unhandled exception: ") + e.what());
+             }
+         }),
+    Test("FailAllocation_bad_alloc",
+         [](Result &result) {
+             try {
+                 constexpr size_t alignment = 128;
+                 typedef Ball<alignment> Ball;
+                 typedef Balls<alignment> Balls;
+                 std::vector<Ball> init;
+                 const size_t n = init.max_size();
+
+                 Balls::Accessor accessor;
+                 Balls balls(memory_ops, std::vector<Ball>(n), &accessor);
+             } catch (std::bad_alloc &e) {
+                 constexpr CompileTimeString substr = "bad_alloc"_cts;
+                 const auto pos = std::string(e.what()).find(substr.str);
+                 ASSERT(
+                     pos != std::string::npos,
+                     ("Exception should contain the substr \"" + substr + "\"")
+                         .str);
+             } catch (const std::exception &e) {
+                 ASSERT(false, std::string("Unhandled exception: ") + e.what());
+             }
+         }),
+    Test("FailAllocation_bad_alloc2",
+         [](Result &result) {
+             try {
+                 Buffer buffer(memory_ops, ~0ul / 2);
+             } catch (std::bad_alloc &e) {
+                 constexpr CompileTimeString substr = "bad_alloc"_cts;
+                 const auto pos = std::string(e.what()).find(substr.str);
+                 ASSERT(
+                     pos != std::string::npos,
+                     ("Exception should contain the substr \"" + substr + "\"")
+                         .str);
+             } catch (const std::exception &e) {
+                 ASSERT(false, std::string("Unhandled exception: ") + e.what());
+             }
          }),
 };
 

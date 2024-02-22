@@ -23,4 +23,4 @@ g++ $base_dir/tests/tests.cpp \
     -isystem "include/tabulate/include" \
     && ./$out_bin
 
-rm -rf $out_bin \
+rm -rf $out_bin
