@@ -220,6 +220,10 @@ struct FindString {
 // ==== Buffer ====
 // - A very simple buffer that allocates/deallocates memory with the given
 // MemoryOps
+// TODO: figure out how to use unique_ptr with this
+// Does it mean the MemoryOps structures must use static functions?
+// Delegate the argumets to allocator/deallocator through parameter packs?
+// Something like that, dunno
 struct Buffer {
     const MemoryOps &memory_ops;
     void *const data = nullptr;
