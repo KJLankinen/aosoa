@@ -184,10 +184,8 @@ template <size_t N, typename... Types> struct NthType {
         }
     }
 
-    static constexpr auto t = ofType<0, Types...>();
-
   public:
-    using Type = std::remove_const_t<decltype(t)>;
+    using Type = std::invoke_result_t<decltype(ofType<0, Types...>)>;
 };
 
 // ==== IndexOfString ====
