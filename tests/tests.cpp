@@ -16,55 +16,6 @@ using namespace aosoa;
 //   works correctly
 // - sycl/cuda/hip testing
 
-void soa() {
-    typedef aosoa::StructureOfArrays<128, aosoa::Variable<bool, "is_visible">,
-                                     aosoa::Variable<float, "radius">,
-                                     aosoa::Variable<double, "radius2">,
-                                     aosoa::Variable<int, "num_hits">>
-        Soa;
-
-    const size_t n = 5;
-    const size_t mem_req = Soa::getMemReq(n);
-    std::cout << "mem req: " << mem_req << std::endl;
-
-    const aosoa::CMemoryOps memory_ops;
-    Soa::Accessor accessor;
-    Soa soa(memory_ops, n, &accessor);
-
-    bool *is_visible = accessor.get<"is_visible">();
-    float *radii = accessor.get<"radius">();
-    double *radii2 = accessor.get<"radius2">();
-    int *num_hits = accessor.get<"num_hits">();
-
-    for (size_t i = 0; i < n; i++) {
-        is_visible[i] = i < n / 2;
-        radii[i] = static_cast<float>(i);
-        radii2[i] = static_cast<double>(i);
-        num_hits[i] = -static_cast<int>(i);
-    }
-
-    std::cout << accessor.get<"is_visible">(n / 2 - 1) << " "
-              << accessor.get<"is_visible">(n / 2) << " "
-              << accessor.get<"radius">(n / 2 - 1) << " "
-              << accessor.get<"radius">(n / 2) << std::endl;
-
-    accessor.set<"radius">(4, 1338.0f);
-
-    std::cout << accessor.get<"radius2">(4) << " " << accessor.get<"radius">(4)
-              << std::endl;
-
-    Soa::Accessor accessor2;
-    std::memcpy(static_cast<void *>(&accessor2), static_cast<void *>(&accessor),
-                sizeof(Soa::Accessor));
-
-    for (size_t i = 0; i < n; i++) {
-        std::cout << accessor2.get(i) << std::endl;
-    }
-
-    accessor.set(2, Soa::FullRow(true, 1337.0f, 1337.0, -12));
-    std::cout << accessor2.get(2) << std::endl;
-}
-
 namespace {
 // Definitions for a simple testing harness
 struct Result {

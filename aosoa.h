@@ -25,6 +25,7 @@
 #include <cstring>
 #include <memory>
 #include <ostream>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -481,12 +482,17 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
                       const std::vector<FullRow> &rows, Accessor *accessor)
         : memory_ops(mem_ops), max_num_elements(rows.size()),
           buffer(memory_ops, getMemReq(max_num_elements)),
-          local_accessor(
-              max_num_elements,
-              makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  buffer.data, Pointers{}, ~0ul, max_num_elements)),
           remote_accessor(accessor) {
+        // Abort if buffer failed
+        if (buffer.data == nullptr) {
+            throw std::runtime_error("Buffer couldn't allocate memory");
+        }
         // Setup the accessor
+        local_accessor = Accessor(
+            max_num_elements,
+            makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
+                buffer.data, Pointers{}, ~0ul, max_num_elements));
+
         updateAccessor();
 
         // Initialize the memory with the given vector
