@@ -24,7 +24,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <new>
 #include <ostream>
 #include <type_traits>
 #include <utility>
@@ -128,10 +127,6 @@ template <typename, CompileTimeString> struct Variable {};
 // ==== Abstract MemoryOps interface ====
 // - Override this for C, Cuda, Hip, Sycl and others as needed
 struct MemoryOps {
-    // Used to allocate the memory used by StructureOfArrays
-    virtual void *allocate(size_t bytes) const = 0;
-    // Used to deallocate the memory used by StructureOfArrays
-    virtual void deallocate(void *ptr) const = 0;
     // Used to copy the memory used by StructureOfArrays to/from pointers
     // internal or external to StructureOfArrays
     virtual void memcpy(void *dst, const void *src, size_t bytes,
@@ -147,18 +142,8 @@ struct MemoryOps {
     virtual bool accessOnHostRequiresMemcpy() const = 0;
 };
 
-struct CDeallocator {
-    void operator()(void *ptr) const noexcept { std::free(ptr); }
-};
-
-struct CAllocator {
-    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
-};
-
 // ==== CMemoryOps ====
 struct CMemoryOps : MemoryOps {
-    void *allocate(size_t bytes) const { return std::malloc(bytes); }
-    void deallocate(void *ptr) const { std::free(ptr); }
     void memcpy(void *dst, const void *src, size_t bytes, bool) const {
         std::memcpy(dst, src, bytes);
     }
@@ -169,6 +154,28 @@ struct CMemoryOps : MemoryOps {
         std::memcpy(dst, src, bytes);
     }
     bool accessOnHostRequiresMemcpy() const { return false; }
+};
+
+// TODO: instantiate with std::binds, replace the CMemoryOps with this
+template <typename Copy, typename Set, typename Update,
+          bool HostAccessRequiresCopy>
+struct MemoryOperations {
+    static constexpr bool host_access_requires_copy = HostAccessRequiresCopy;
+    Copy c;
+    Set s;
+    Update u;
+
+    template <typename... Args> void memcpy(Args... args) { return c(args...); }
+    template <typename... Args> void memset(Args... args) { return s(args...); }
+    template <typename... Args> void update(Args... args) { return u(args...); }
+};
+
+struct CDeallocator {
+    void operator()(void *ptr) const noexcept { std::free(ptr); }
+};
+
+struct CAllocator {
+    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
 };
 
 // ==== PairTraits ====
