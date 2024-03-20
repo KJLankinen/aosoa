@@ -9,13 +9,6 @@
 
 using namespace aosoa;
 
-// TODO:
-// Test Buffer
-// - constructing and freeing in a loop to see memory usage
-// - a throwing constructor for a type that uses buffer: see if deallocation
-//   works correctly
-// - sycl/cuda/hip testing
-
 namespace {
 // Definitions for a simple testing harness
 struct Result {
@@ -42,12 +35,15 @@ typedef Row<Variable<float, "head">> RowSingle;
 typedef Row<Variable<float, "head">, Variable<int32_t, "tail">> RowDouble;
 
 template <size_t Alignment>
-using MemReqSoa = StructureOfArrays<Alignment, Variable<double, "first">,
-                                    Variable<float, "second">>;
+using MemReqSoa =
+    StructureOfArrays<aosoa::CAllocator, aosoa::CDeallocator, Alignment,
+                      Variable<double, "first">, Variable<float, "second">>;
 
 // clang-format off
 template <size_t Alignment>
-using Balls = StructureOfArrays<Alignment,
+using Balls = StructureOfArrays<
+            aosoa::CAllocator,
+            aosoa::CDeallocator, Alignment,
             Variable<double, "position_x">,
             Variable<double, "position_y">,
             Variable<double, "position_z">,
@@ -309,9 +305,10 @@ constexpr static std::array tests = {
              constexpr size_t alignment = 128;
              constexpr size_t n = 1000;
              typedef StructureOfArrays<
-                 alignment, Variable<double, "first">,
-                 Variable<float, "second">, Variable<int, "third">,
-                 Variable<bool, "fourth">, Variable<float, "fifth">>
+                 aosoa::CAllocator, aosoa::CDeallocator, alignment,
+                 Variable<double, "first">, Variable<float, "second">,
+                 Variable<int, "third">, Variable<bool, "fourth">,
+                 Variable<float, "fifth">>
                  Soa;
              const size_t mem_req = Soa::getMemReq(n);
              ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
@@ -322,7 +319,8 @@ constexpr static std::array tests = {
              constexpr size_t alignment = 128;
              constexpr size_t n = 3216547;
              typedef StructureOfArrays<
-                 alignment, Variable<double, "first">, Variable<char, "second">,
+                 aosoa::CAllocator, aosoa::CDeallocator, alignment,
+                 Variable<double, "first">, Variable<char, "second">,
                  Variable<int, "third">, Variable<bool, "fourth">,
                  Variable<float, "fifth">>
                  Soa;
@@ -335,7 +333,8 @@ constexpr static std::array tests = {
              constexpr size_t alignment = 32;
              constexpr size_t n = 3216547;
              typedef StructureOfArrays<
-                 alignment, Variable<double, "first">, Variable<char, "second">,
+                 aosoa::CAllocator, aosoa::CDeallocator, alignment,
+                 Variable<double, "first">, Variable<char, "second">,
                  Variable<int, "third">, Variable<bool, "fourth">,
                  Variable<float, "fifth">>
                  Soa;
@@ -349,7 +348,8 @@ constexpr static std::array tests = {
              constexpr size_t n = 100;
 
              typedef StructureOfArrays<
-                 alignment, Variable<double, "1">, Variable<double, "2">,
+                 aosoa::CAllocator, aosoa::CDeallocator, alignment,
+                 Variable<double, "1">, Variable<double, "2">,
                  Variable<double, "3">, Variable<double, "4">,
                  Variable<double, "5">, Variable<double, "6">,
                  Variable<double, "7">, Variable<double, "8">,
@@ -1349,21 +1349,6 @@ constexpr static std::array tests = {
 
                  Balls::Accessor accessor;
                  Balls balls(memory_ops, std::vector<Ball>(n), &accessor);
-             } catch (std::bad_alloc &e) {
-                 constexpr CompileTimeString substr = "bad_alloc"_cts;
-                 const auto pos = std::string(e.what()).find(substr.str);
-                 ASSERT(
-                     pos != std::string::npos,
-                     ("Exception should contain the substr \"" + substr + "\"")
-                         .str);
-             } catch (const std::exception &e) {
-                 ASSERT(false, std::string("Unhandled exception: ") + e.what());
-             }
-         }),
-    Test("FailAllocation_bad_alloc2",
-         [](Result &result) {
-             try {
-                 Buffer buffer(memory_ops, ~0ul / 2);
              } catch (std::bad_alloc &e) {
                  constexpr CompileTimeString substr = "bad_alloc"_cts;
                  const auto pos = std::string(e.what()).find(substr.str);

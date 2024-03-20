@@ -147,6 +147,14 @@ struct MemoryOps {
     virtual bool accessOnHostRequiresMemcpy() const = 0;
 };
 
+struct CDeallocator {
+    void operator()(void *ptr) const noexcept { std::free(ptr); }
+};
+
+struct CAllocator {
+    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
+};
+
 // ==== CMemoryOps ====
 struct CMemoryOps : MemoryOps {
     void *allocate(size_t bytes) const { return std::malloc(bytes); }
@@ -215,26 +223,6 @@ template <CompileTimeString MatchStr, CompileTimeString... Strings>
 struct FindString {
     constexpr static bool value =
         IndexOfString<MatchStr, Strings...>::i != IndexOfString<MatchStr>::i;
-};
-
-// ==== Buffer ====
-// - A very simple buffer that allocates/deallocates memory with the given
-// MemoryOps
-// TODO: figure out how to use unique_ptr with this
-// Does it mean the MemoryOps structures must use static functions?
-// Delegate the argumets to allocator/deallocator through parameter packs?
-// Something like that, dunno
-struct Buffer {
-    const MemoryOps &memory_ops;
-    void *const data = nullptr;
-
-    Buffer(const MemoryOps &mem_ops, size_t bytes)
-        : memory_ops(mem_ops), data(memory_ops.allocate(bytes)) {
-        if (data == nullptr) {
-            throw std::bad_alloc();
-        }
-    }
-    ~Buffer() { memory_ops.deallocate(data); }
 };
 } // namespace detail
 
@@ -384,7 +372,9 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
 }
 
 // ==== StructureOfArrays ====
-template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
+template <typename Allocator, typename Deallocator, size_t MIN_ALIGN,
+          typename... Variables>
+struct StructureOfArrays {
   private:
     static_assert(Row<Variables...>::unique_names,
                   "StructureOfArrays has clashing names");
@@ -404,7 +394,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
 
     struct Accessor {
       private:
-        template <size_t I, typename... T> friend struct StructureOfArrays;
+        template <typename, typename, size_t, typename...>
+        friend struct StructureOfArrays;
         size_t num_elements = 0;
         Pointers pointers = {};
 
@@ -481,21 +472,24 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
   private:
     const MemoryOps &memory_ops;
     const size_t max_num_elements;
-    const Buffer buffer;
+    std::unique_ptr<uint8_t, Deallocator> memory;
     Accessor local_accessor = {};
     Accessor *const remote_accessor = nullptr;
 
   public:
     StructureOfArrays(const MemoryOps &mem_ops, size_t n, Accessor *accessor)
         : memory_ops(mem_ops), max_num_elements(n),
-          buffer(memory_ops, getMemReq(max_num_elements)),
+          memory(
+              static_cast<uint8_t *>(Allocator{}(getMemReq(max_num_elements)))),
           local_accessor(
               max_num_elements,
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  buffer.data, Pointers{}, ~0ul, max_num_elements)),
+                  static_cast<void *>(memory.get()), Pointers{}, ~0ul,
+                  max_num_elements)),
           remote_accessor(accessor) {
         updateAccessor();
-        memory_ops.memset(buffer.data, 0, getMemReq(max_num_elements), true);
+        memory_ops.memset(static_cast<void *>(memory.get()), 0,
+                          getMemReq(max_num_elements), true);
     }
 
     // If the number of elements is very large, use the above constructor and
@@ -506,8 +500,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         if (memory_ops.accessOnHostRequiresMemcpy()) {
             CMemoryOps c_mem_ops;
             Accessor a;
-            StructureOfArrays<MIN_ALIGN, Variables...> host_soa(c_mem_ops, rows,
-                                                                &a);
+            StructureOfArrays<CAllocator, CDeallocator, MIN_ALIGN, Variables...>
+                host_soa(c_mem_ops, rows, &a);
             memory_ops.memcpy(local_accessor.pointers[0],
                               host_soa.local_accessor.pointers[0],
                               getAlignedBlockSize(), true);
@@ -550,11 +544,12 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
         // How many bytes from the beginning of the data pointer are unused due
         // to alignment requirement
         return static_cast<uintptr_t>(
-            static_cast<uint8_t *>(local_accessor.pointers[0]) -
-            static_cast<uint8_t *>(buffer.data));
+            static_cast<uint8_t *>(local_accessor.pointers[0]) - memory.get());
     }
 
-    [[nodiscard]] void *data() const { return buffer.data; }
+    [[nodiscard]] void *data() const {
+        return static_cast<void *>(memory.get());
+    }
 
     void decreaseBy(size_t n, bool update_accessor = false) {
         local_accessor.num_elements -= std::min(n, local_accessor.num_elements);
@@ -613,8 +608,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct StructureOfArrays {
             // version of this function
             CMemoryOps c_mem_ops;
             Accessor a;
-            StructureOfArrays<MIN_ALIGN, Variables...> host_soa(
-                c_mem_ops, max_num_elements, &a);
+            StructureOfArrays<CAllocator, CDeallocator, MIN_ALIGN, Variables...>
+                host_soa(c_mem_ops, max_num_elements, &a);
             memory_ops.memcpy(host_soa.local_accessor.pointers[0],
                               local_accessor.pointers[0], getAlignedBlockSize(),
                               true);
