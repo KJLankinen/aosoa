@@ -124,60 +124,6 @@ template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
 // - Binds a type and a CompileTimeString together
 template <typename, CompileTimeString> struct Variable {};
 
-// ==== Abstract MemoryOps interface ====
-// - Override this for C, Cuda, Hip, Sycl and others as needed
-struct MemoryOps {
-    // Used to copy the memory used by StructureOfArrays to/from pointers
-    // internal or external to StructureOfArrays
-    virtual void memcpy(void *dst, const void *src, size_t bytes,
-                        bool synchronous = true) const = 0;
-    // Used to set the memory used by StructureOfArrays
-    virtual void memset(void *dst, int pattern, size_t bytes,
-                        bool synchronous = true) const = 0;
-    // Used to update the remote_accessor of StructureOfArrays
-    virtual void update(void *dst, const void *src, size_t bytes) const = 0;
-    // Whether or not accessing the data with the accessor on host requires a
-    // memcpy. In other words, are the data and the StructureOfArrays in the
-    // same memory space?
-    virtual bool accessOnHostRequiresMemcpy() const = 0;
-};
-
-// ==== CMemoryOps ====
-struct CMemoryOps : MemoryOps {
-    void memcpy(void *dst, const void *src, size_t bytes, bool) const {
-        std::memcpy(dst, src, bytes);
-    }
-    void memset(void *dst, int pattern, size_t bytes, bool) const {
-        std::memset(dst, pattern, bytes);
-    }
-    void update(void *dst, const void *src, size_t bytes) const {
-        std::memcpy(dst, src, bytes);
-    }
-    bool accessOnHostRequiresMemcpy() const { return false; }
-};
-
-// TODO: instantiate with std::binds, replace the CMemoryOps with this
-template <typename Copy, typename Set, typename Update,
-          bool HostAccessRequiresCopy>
-struct MemoryOperations {
-    static constexpr bool host_access_requires_copy = HostAccessRequiresCopy;
-    Copy c;
-    Set s;
-    Update u;
-
-    template <typename... Args> void memcpy(Args... args) { return c(args...); }
-    template <typename... Args> void memset(Args... args) { return s(args...); }
-    template <typename... Args> void update(Args... args) { return u(args...); }
-};
-
-struct CDeallocator {
-    void operator()(void *ptr) const noexcept { std::free(ptr); }
-};
-
-struct CAllocator {
-    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
-};
-
 // ==== PairTraits ====
 // - Used to extract the name and the type from a Variable<Type, Name>
 template <typename> struct PairTraits;
@@ -231,6 +177,50 @@ struct FindString {
     constexpr static bool value =
         IndexOfString<MatchStr, Strings...>::i != IndexOfString<MatchStr>::i;
 };
+
+// ==== MemoryOperations ====
+// - These are used by StructureOfArrays to perform
+//     - memory allocation at construction
+//     - deallocation at unique_ptr destruction
+//     - memcpy and memset between pointers
+//     - update of the remote accessor
+// - One should create similar functors for different APIs like Cuda, Hip and
+//   Sycl
+template <bool HostAccessRequiresCopy, typename Allocate, typename Free,
+          typename Copy, typename Set, typename Update>
+struct MemoryOperations {
+    using Deallocate = Free;
+    static constexpr bool host_access_requires_copy = HostAccessRequiresCopy;
+    Allocate allocate = {};
+    Copy memcpy = {};
+    Set memset = {};
+    Update update = {};
+};
+
+struct CAllocator {
+    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
+};
+
+struct CDeallocator {
+    void operator()(void *ptr) const noexcept { std::free(ptr); }
+};
+
+struct CMemcpy {
+    void operator()(void *dst, const void *src, size_t bytes) const noexcept {
+        std::memcpy(dst, src, bytes);
+    }
+};
+
+struct CMemset {
+    void operator()(void *dst, int pattern, size_t bytes) const noexcept {
+        std::memset(dst, pattern, bytes);
+    }
+};
+
+typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset,
+                         CMemcpy>
+    CMemoryOperations;
+
 } // namespace detail
 
 namespace aosoa {
@@ -379,8 +369,12 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
 }
 
 // ==== StructureOfArrays ====
-template <typename Allocator, typename Deallocator, size_t MIN_ALIGN,
-          typename... Variables>
+// TODO:
+// - Move Accessor out of StructureOfArrays, so it's not dependent on the
+//   parent type
+// - Remove Accessor friend SoA and use get instead of pointers[] with
+//   StructureOfArrays
+template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
   private:
     static_assert(Row<Variables...>::unique_names,
@@ -388,6 +382,11 @@ struct StructureOfArrays {
 
     static constexpr size_t num_pointers = sizeof...(Variables);
     using Pointers = Array<void *, num_pointers>;
+
+    template <size_t MA, typename M, typename... V>
+    friend struct StructureOfArrays;
+
+    using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
 
   public:
     template <CompileTimeString Cts> struct GetType {
@@ -401,7 +400,7 @@ struct StructureOfArrays {
 
     struct Accessor {
       private:
-        template <typename, typename, size_t, typename...>
+        template <size_t MA, typename M, typename... V>
         friend struct StructureOfArrays;
         size_t num_elements = 0;
         Pointers pointers = {};
@@ -444,7 +443,8 @@ struct StructureOfArrays {
             fromRow<Variables...>(i, std::move(t));
         }
 
-        HOST DEVICE size_t size() const { return num_elements; }
+        HOST DEVICE size_t &size() { return num_elements; }
+        HOST DEVICE const size_t &size() const { return num_elements; }
 
       private:
         template <typename Head, typename... Tail>
@@ -477,17 +477,17 @@ struct StructureOfArrays {
     };
 
   private:
-    const MemoryOps &memory_ops;
+    const MemOps &memory_ops;
     const size_t max_num_elements;
-    std::unique_ptr<uint8_t, Deallocator> memory;
+    std::unique_ptr<uint8_t, typename MemOps::Deallocate> memory;
     Accessor local_accessor = {};
     Accessor *const remote_accessor = nullptr;
 
   public:
-    StructureOfArrays(const MemoryOps &mem_ops, size_t n, Accessor *accessor)
+    StructureOfArrays(const MemOps &mem_ops, size_t n, Accessor *accessor)
         : memory_ops(mem_ops), max_num_elements(n),
-          memory(
-              static_cast<uint8_t *>(Allocator{}(getMemReq(max_num_elements)))),
+          memory(static_cast<uint8_t *>(
+              memory_ops.allocate(getMemReq(max_num_elements)))),
           local_accessor(
               max_num_elements,
               makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
@@ -496,22 +496,21 @@ struct StructureOfArrays {
           remote_accessor(accessor) {
         updateAccessor();
         memory_ops.memset(static_cast<void *>(memory.get()), 0,
-                          getMemReq(max_num_elements), true);
+                          getMemReq(max_num_elements));
     }
 
     // If the number of elements is very large, use the above constructor and
     // initialize the values in place to avoid running out of memory
-    StructureOfArrays(const MemoryOps &mem_ops,
-                      const std::vector<FullRow> &rows, Accessor *accessor)
+    StructureOfArrays(const MemOps &mem_ops, const std::vector<FullRow> &rows,
+                      Accessor *accessor)
         : StructureOfArrays(mem_ops, rows.size(), accessor) {
-        if (memory_ops.accessOnHostRequiresMemcpy()) {
-            CMemoryOps c_mem_ops;
-            Accessor a;
-            StructureOfArrays<CAllocator, CDeallocator, MIN_ALIGN, Variables...>
-                host_soa(c_mem_ops, rows, &a);
+        if (memory_ops.host_access_requires_copy) {
+            CMemoryOperations c_mem_ops;
+            typename CSoa::Accessor a;
+            CSoa host_soa(c_mem_ops, rows, &a);
             memory_ops.memcpy(local_accessor.pointers[0],
                               host_soa.local_accessor.pointers[0],
-                              getAlignedBlockSize(), true);
+                              getAlignedBlockSize());
         } else {
             size_t i = 0;
             for (const auto &row : rows) {
@@ -539,8 +538,7 @@ struct StructureOfArrays {
     }
 
     template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
-        return local_accessor.num_elements *
-               sizeof(typename GetType<Cts>::Type);
+        return local_accessor.size() * sizeof(typename GetType<Cts>::Type);
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
@@ -559,7 +557,7 @@ struct StructureOfArrays {
     }
 
     void decreaseBy(size_t n, bool update_accessor = false) {
-        local_accessor.num_elements -= std::min(n, local_accessor.num_elements);
+        local_accessor.size() -= std::min(n, local_accessor.size());
         if (update_accessor) {
             updateAccessor();
         }
@@ -610,22 +608,21 @@ struct StructureOfArrays {
         // memory recides on device. The first copy is the raw data from device
         // to host, the second is from soa (= current) layout to aos (= vector
         // of FullRow) layout
-        if (memory_ops.accessOnHostRequiresMemcpy()) {
+        if (memory_ops.host_access_requires_copy) {
             // Create this structure backed by host memory, then call it's
             // version of this function
-            CMemoryOps c_mem_ops;
-            Accessor a;
-            StructureOfArrays<CAllocator, CDeallocator, MIN_ALIGN, Variables...>
-                host_soa(c_mem_ops, max_num_elements, &a);
+            CMemoryOperations c_mem_ops;
+            typename CSoa::Accessor a;
+            CSoa host_soa(c_mem_ops, max_num_elements, &a);
             memory_ops.memcpy(host_soa.local_accessor.pointers[0],
-                              local_accessor.pointers[0], getAlignedBlockSize(),
-                              true);
-            host_soa.local_accessor.num_elements = local_accessor.num_elements;
+                              local_accessor.pointers[0],
+                              getAlignedBlockSize());
+            host_soa.local_accessor.size() = local_accessor.size();
 
             return host_soa.getRows();
         } else {
             // Just convert to a vector of rows
-            std::vector<FullRow> rows(local_accessor.num_elements);
+            std::vector<FullRow> rows(local_accessor.size());
             std::generate(rows.begin(), rows.end(), [i = 0ul, this]() mutable {
                 return local_accessor.get(i++);
             });
@@ -719,6 +716,7 @@ struct StructureOfArrays {
     }
 
   private:
+    // TODO: f should use bind, so don't take args
     template <typename F, typename... Args>
     auto memcpy(F f, void *dst, const void *src, size_t bytes,
                 Args... args) const {

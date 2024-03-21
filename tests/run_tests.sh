@@ -21,6 +21,7 @@ g++ $base_dir/tests/tests.cpp \
     -Wconversion \
     -O2 \
     -isystem "include/tabulate/include" \
+    -fdiagnostics-show-template-tree \
     && ./$out_bin
 
 rm -rf $out_bin
