@@ -400,8 +400,6 @@ struct StructureOfArrays {
 
     struct Accessor {
       private:
-        template <size_t MA, typename M, typename... V>
-        friend struct StructureOfArrays;
         size_t num_elements = 0;
         Pointers pointers = {};
 
@@ -416,6 +414,13 @@ struct StructureOfArrays {
             return static_cast<G::Type *>(pointers[G::i]);
         }
 
+        template <size_t I> HOST DEVICE [[nodiscard]] auto get() const {
+            using Type =
+                typename NthType<I,
+                                 typename PairTraits<Variables>::Type...>::Type;
+            return static_cast<Type *>(pointers[I]);
+        }
+
         template <CompileTimeString Cts, size_t I>
         HOST DEVICE [[nodiscard]] auto get() const {
             return get<Cts>()[I];
@@ -428,6 +433,12 @@ struct StructureOfArrays {
 
         HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
             return toRow<Variables...>(i);
+        }
+
+        template <CompileTimeString Cts>
+        HOST DEVICE [[nodiscard]] void *&getRef() {
+            using G = GetType<Cts>;
+            return pointers[G::i];
         }
 
         template <CompileTimeString Cts, typename T>
@@ -508,8 +519,8 @@ struct StructureOfArrays {
             CMemoryOperations c_mem_ops;
             typename CSoa::Accessor a;
             CSoa host_soa(c_mem_ops, rows, &a);
-            memory_ops.memcpy(local_accessor.pointers[0],
-                              host_soa.local_accessor.pointers[0],
+            memory_ops.memcpy(local_accessor.template get<0>(),
+                              host_soa.local_accessor.template get<0>(),
                               getAlignedBlockSize());
         } else {
             size_t i = 0;
@@ -549,7 +560,9 @@ struct StructureOfArrays {
         // How many bytes from the beginning of the data pointer are unused due
         // to alignment requirement
         return static_cast<uintptr_t>(
-            static_cast<uint8_t *>(local_accessor.pointers[0]) - memory.get());
+            static_cast<uint8_t *>(
+                static_cast<void *>(local_accessor.template get<0>())) -
+            memory.get());
     }
 
     [[nodiscard]] void *data() const {
@@ -571,8 +584,8 @@ struct StructureOfArrays {
         static_assert(IsSame<typename G1::Type, typename G2::Type>::value,
                       "Mismatched types for swap");
 
-        std::swap(local_accessor.pointers[G1::i],
-                  local_accessor.pointers[G2::i]);
+        std::swap(local_accessor.template getRef<Cts1>(),
+                  local_accessor.template getRef<Cts2>());
 
         if (update_accessor) {
             updateAccessor();
@@ -614,8 +627,8 @@ struct StructureOfArrays {
             CMemoryOperations c_mem_ops;
             typename CSoa::Accessor a;
             CSoa host_soa(c_mem_ops, max_num_elements, &a);
-            memory_ops.memcpy(host_soa.local_accessor.pointers[0],
-                              local_accessor.pointers[0],
+            memory_ops.memcpy(host_soa.local_accessor.template get<0>(),
+                              local_accessor.template get<0>(),
                               getAlignedBlockSize());
             host_soa.local_accessor.size() = local_accessor.size();
 
@@ -640,9 +653,9 @@ struct StructureOfArrays {
                       "Mismatched types for memcpy");
         static_assert(DstName != SrcName, "DstName and SrcName are the same");
 
-        return memcpy(f, local_accessor.pointers[Dst::i],
-                      local_accessor.pointers[Src::i], getMemReq<DstName>(),
-                      args...);
+        return memcpy(f, local_accessor.template get<DstName>(),
+                      local_accessor.template get<SrcName>(),
+                      getMemReq<DstName>(), args...);
     }
 
     // Internal to internal
@@ -654,8 +667,9 @@ struct StructureOfArrays {
                       "Mismatched types for memcpy");
         static_assert(DstName != SrcName, "DstName and SrcName are the same");
 
-        return memcpy(local_accessor.pointers[Dst::i],
-                      local_accessor.pointers[Src::i], getMemReq<DstName>());
+        return memcpy(local_accessor.template get<DstName>(),
+                      local_accessor.template get<SrcName>(),
+                      getMemReq<DstName>());
     }
 
     // External to internal
@@ -665,7 +679,7 @@ struct StructureOfArrays {
         using Dst = GetType<DstName>;
         static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(f, local_accessor.pointers[Dst::i],
+        return memcpy(f, local_accessor.template get<DstName>(),
                       static_cast<const void *>(src), getMemReq<DstName>(),
                       args...);
     }
@@ -676,7 +690,7 @@ struct StructureOfArrays {
         using Dst = GetType<DstName>;
         static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(local_accessor.pointers[Dst::i],
+        return memcpy(local_accessor.template get<DstName>(),
                       static_cast<const void *>(src), getMemReq<DstName>());
     }
 
@@ -688,8 +702,8 @@ struct StructureOfArrays {
         static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
         return memcpy(f, static_cast<void *>(dst),
-                      local_accessor.pointers[Src::i], getMemReq<SrcName>(),
-                      args...);
+                      local_accessor.template get<SrcName>(),
+                      getMemReq<SrcName>(), args...);
     }
 
     // Internal to external
@@ -698,20 +712,19 @@ struct StructureOfArrays {
         using Src = GetType<SrcName>;
         static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(static_cast<void *>(dst), local_accessor.pointers[Src::i],
+        return memcpy(static_cast<void *>(dst),
+                      local_accessor.template get<SrcName>(),
                       getMemReq<SrcName>());
     }
 
     template <CompileTimeString DstName, typename F, typename... Args>
     auto memset(F f, int pattern, Args... args) {
-        using Dst = GetType<DstName>;
-        return f(local_accessor.pointers[Dst::i], pattern, getMemReq<DstName>(),
-                 args...);
+        return f(local_accessor.template get<DstName>(), pattern,
+                 getMemReq<DstName>(), args...);
     }
 
     template <CompileTimeString DstName> auto memset(int pattern) {
-        using Dst = GetType<DstName>;
-        return memset(local_accessor.pointers[Dst::i], pattern,
+        return memset(local_accessor.template get<DstName>(), pattern,
                       getMemReq<DstName>());
     }
 
