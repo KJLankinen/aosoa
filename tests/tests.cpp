@@ -485,6 +485,83 @@ constexpr static std::array tests = {
                             std::to_string(i));
              }
          }),
+    Test("StructureOfArrays_construction5",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 128;
+             typedef Ball<alignment> Ball;
+             typedef CBalls<alignment> Balls;
+
+             const std::vector<Ball> init(n);
+             Balls balls(memory_ops, init);
+
+             for (size_t i = 0; i < balls.getAccess().size(); i++) {
+                 ASSERT(balls.getAccess().get(i) == Ball{},
+                        "Ball at index " + std::to_string(i) +
+                            " should be equal to Ball{} but is not");
+             }
+         }),
+    Test("StructureOfArrays_construction6",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 128;
+             typedef Ball<alignment> Ball;
+             typedef CBalls<alignment> Balls;
+
+             const std::vector<Ball> init(n);
+             const Balls balls(memory_ops, init);
+
+             for (size_t i = 0; i < balls.getAccess().size(); i++) {
+                 ASSERT(balls.getAccess().get(i) == Ball{},
+                        "Ball at index " + std::to_string(i) +
+                            " should be equal to Ball{} but is not");
+             }
+         }),
+    Test("StructureOfArrays_construction7",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 128;
+             typedef Ball<alignment> Ball;
+             typedef CBalls<alignment> Balls;
+
+             std::vector<Ball> init(n);
+             {
+                 size_t i = 0;
+                 for (auto &ball : init) {
+                     const auto di = static_cast<double>(i);
+                     const auto fi = static_cast<float>(i);
+                     const auto ui = static_cast<uint32_t>(i);
+                     const auto ii = static_cast<int32_t>(i);
+                     const auto bi = static_cast<bool>(i);
+
+                     ball.get<"position_x">() = di;
+                     ball.get<"position_y">() = di;
+                     ball.get<"position_z">() = di;
+                     ball.get<"radius">() = di;
+                     ball.get<"color_r">() = fi;
+                     ball.get<"color_g">() = fi;
+                     ball.get<"color_b">() = fi;
+                     ball.get<"index">() = ui;
+                     ball.get<"index_distance">() = ii;
+                     ball.get<"is_visible">() = bi;
+
+                     i++;
+                 }
+             }
+             Balls balls(memory_ops, init);
+
+             for (size_t i = 0; i < balls.getAccess().size(); i++) {
+                 const auto di = static_cast<double>(i);
+                 const auto fi = static_cast<float>(i);
+                 const auto ui = static_cast<uint32_t>(i);
+                 const auto ii = static_cast<int32_t>(i);
+                 const auto bi = static_cast<bool>(i);
+                 ASSERT(balls.getAccess().get(i) ==
+                            Ball(di, di, di, di, fi, fi, fi, ui, ii, bi),
+                        "Ball at index " + std::to_string(i) +
+                            " contains incorrect data");
+             }
+         }),
     Test("StructureOfArrays_getMemReqRow1",
          [](Result &result) {
              constexpr size_t alignment = 128;
@@ -509,7 +586,7 @@ constexpr static std::array tests = {
              std::vector<Ball> init(n);
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
-             balls.decreaseBy(28, true);
+             balls.decreaseBy(28, &accessor);
 
              ASSERT(balls.getMemReq<"radius">() == sizeof(double) * (n - 28),
                     "Radius memory requirement should be (n - 28) * "
@@ -570,7 +647,7 @@ constexpr static std::array tests = {
 
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
-             balls.decreaseBy(6, true);
+             balls.decreaseBy(6, &accessor);
 
              ASSERT(accessor.size() == 660,
                     "Updated accessor should have updated size");
@@ -584,7 +661,7 @@ constexpr static std::array tests = {
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6);
-             balls.updateAccessor();
+             balls.updateAccessor(&accessor);
 
              ASSERT(accessor.size() == 660,
                     "Updated accessor should have updated size");
@@ -598,7 +675,7 @@ constexpr static std::array tests = {
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(3);
-             balls.decreaseBy(3, true);
+             balls.decreaseBy(3, &accessor);
 
              ASSERT(accessor.size() == 660,
                     "Updated accessor should have updated size");
@@ -631,7 +708,7 @@ constexpr static std::array tests = {
 
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
-             balls.swap<"position_x", "position_y">(true);
+             balls.swap<"position_x", "position_y">(&accessor);
              ASSERT(accessor.get<"position_y">(0) == 666.666,
                     "Updated swap should be visible at accessor");
              ASSERT(accessor.get<"position_x">(1) == 13.0,
@@ -650,7 +727,7 @@ constexpr static std::array tests = {
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.swap<"position_x", "position_y">();
-             balls.updateAccessor();
+             balls.updateAccessor(&accessor);
 
              ASSERT(accessor.get<"position_y">(0) == 666.666,
                     "Updated swap should be visible at accessor");
@@ -672,7 +749,7 @@ constexpr static std::array tests = {
              Balls balls(memory_ops, init, &accessor);
 
              balls.swap<"position_x", "position_y", "position_z", "radius">(
-                 true);
+                 &accessor);
 
              ASSERT(accessor.get<"position_x">(0) == 1.0,
                     "Updated swap should be visible at accessor");
@@ -707,7 +784,7 @@ constexpr static std::array tests = {
              Balls balls(memory_ops, init, &accessor);
 
              balls.swap<"position_x", "position_y", "position_y", "position_z">(
-                 true);
+                 &accessor);
 
              ASSERT(accessor.get<"position_x">(0) == 1.0,
                     "Updated swap should be visible at accessor");
@@ -741,18 +818,18 @@ constexpr static std::array tests = {
                         "position_z">();
 
              ASSERT(accessor.get<"position_x">(0) == 0.0,
-                    "Updated swap should not be visible at accessor");
+                    "Un updated swap should not be visible at accessor");
              ASSERT(accessor.get<"position_y">(0) == 1.0,
-                    "Updated swap should not be visible at accessor");
+                    "Un updated swap should not be visible at accessor");
              ASSERT(accessor.get<"position_z">(0) == 2.0,
-                    "Updated swap should not be visible at accessor");
+                    "Un updated swap should not be visible at accessor");
 
              ASSERT(accessor.get<"position_x">(1) == 9.0,
-                    "Updated swap should not be visible at accessor");
+                    "Un updated swap should not be visible at accessor");
              ASSERT(accessor.get<"position_y">(1) == 10.0,
-                    "Updated swap should not be visible at accessor");
+                    "Un updated swap should not be visible at accessor");
              ASSERT(accessor.get<"position_z">(1) == 11.0,
-                    "Updated swap should not be visible at accessor");
+                    "Un updated swap should not be visible at accessor");
          }),
     Test("StructureOfArrays_swap7",
          [](Result &result) {
@@ -770,7 +847,7 @@ constexpr static std::array tests = {
 
              balls.swap<"position_x", "position_y", "position_y",
                         "position_z">();
-             balls.updateAccessor();
+             balls.updateAccessor(&accessor);
 
              ASSERT(accessor.get<"position_x">(0) == 1.0,
                     "Updated swap should be visible at accessor");
@@ -795,7 +872,7 @@ constexpr static std::array tests = {
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6);
-             balls.updateAccessor(std::memcpy);
+             balls.updateAccessor(&accessor, std::memcpy);
 
              ASSERT(accessor.size() == 660,
                     "Updated accessor should have updated size");
@@ -1119,7 +1196,7 @@ constexpr static std::array tests = {
 
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
-             balls.decreaseBy(10, true);
+             balls.decreaseBy(10, &accessor);
              balls.memset<"index">(0);
 
              // Only the first should be set, since size was decreased

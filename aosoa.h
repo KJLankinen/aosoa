@@ -41,19 +41,6 @@ namespace detail {
 // This namespace contains utility types and functions used by Row and
 // StructureOfArrays
 
-// ==== Array ====
-// - Usable on devices
-template <typename T, size_t N> struct Array {
-    T items[N] = {};
-
-    HOST DEVICE constexpr T &operator[](size_t i) { return items[i]; }
-    HOST DEVICE constexpr const T &operator[](size_t i) const {
-        return items[i];
-    }
-    HOST DEVICE constexpr size_t size() const { return N; }
-    HOST DEVICE constexpr T *data() const { return &items; }
-};
-
 // ==== Type equality ====
 template <typename T, typename U> struct IsSame {
     constexpr static bool value = false;
@@ -377,19 +364,120 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
     return row.output(os) << "\n}";
 }
 
-// ==== Accessor ====
-// - Used to access data stored in a pointers array
-template <typename... Variables> struct Accessor {
+// ==== AlignedPointers ====
+// - An array of void *
+// - Each pointer is aligned by the maximum alignment of all the types in
+//   Variables... and MIN_ALIGN
+template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
+    static constexpr size_t size = sizeof...(Variables);
+
   private:
-    using FullRow = Row<Variables...>;
-    static constexpr size_t num_pointers = sizeof...(Variables);
-    size_t num_elements = 0;
-    Array<void *, num_pointers> pointers = {};
+    void *pointers[size] = {};
 
   public:
-    HOST DEVICE Accessor() {}
-    HOST DEVICE Accessor(size_t n, const Array<void *, num_pointers> &p)
-        : num_elements(n), pointers(p) {}
+    // Construct a target for copy
+    HOST DEVICE AlignedPointers() {}
+
+    AlignedPointers(size_t n, void *ptr) {
+        alignPointers<size, 0, typename PairTraits<Variables>::Type...>(
+            ptr, pointers, ~0ul, n);
+    }
+
+    HOST DEVICE constexpr auto &operator[](size_t i) { return pointers[i]; }
+
+    HOST DEVICE constexpr const auto &operator[](size_t i) const {
+        return pointers[i];
+    }
+
+    [[nodiscard]] static size_t getMemReq(size_t n) {
+        // Get proper begin alignment: the strictest (largest) alignment
+        // requirement between all the types and MIN_ALIGN
+        alignas(getAlignment()) uint8_t dummy = 0;
+        constexpr size_t max_size = ~size_t(0);
+        size_t space = max_size;
+        void *pointers[size] = {};
+        alignPointers<size, 0, typename PairTraits<Variables>::Type...>(
+            static_cast<void *>(&dummy), pointers, std::move(space), n);
+
+        const size_t num_bytes = max_size - space;
+        // Require a block of (M + 1) * alignment bytes, where M is an integer.
+        // The +1 is for manual alignment, if the memory allocation doesn't have
+        // a strict enough alignment requirement.
+        return num_bytes + bytesMissingFromAlignment(num_bytes) +
+               getAlignment();
+    }
+
+    [[nodiscard]] consteval static size_t getAlignment() {
+        static_assert((MIN_ALIGN & (MIN_ALIGN - 1)) == 0,
+                      "MIN_ALIGN isn't a power of two");
+        // Aligned by the strictest (largest) alignment requirement between all
+        // the types and the MIN_ALIGN template argument
+        // N.B. A statement with multiple alignas declarations is supposed to
+        // pick the strictest one, but GCC for some reason picks the last one
+        // that is applied...
+        // If it weren't for that bug, could use:
+        // struct alignas(MIN_ALIGN) alignas(typename
+        // PairTraits<Variables>::Type...) Aligned {}; return alignof(Aligned);
+        struct alignas(MIN_ALIGN) MinAligned {};
+        return maxAlign<MinAligned, typename PairTraits<Variables>::Type...>();
+    }
+
+  private:
+    [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
+        return (getAlignment() - bytesOverAlignment(n)) & (getAlignment() - 1);
+    }
+
+    [[nodiscard]] constexpr static size_t bytesOverAlignment(size_t n) {
+        return n & (getAlignment() - 1);
+    }
+
+    template <typename T, typename... Ts> consteval static size_t maxAlign() {
+        if constexpr (sizeof...(Ts) == 0) {
+            return alignof(T);
+        } else {
+            return std::max(alignof(T), maxAlign<Ts...>());
+        }
+    }
+
+    template <size_t N, size_t>
+    static void alignPointers(void *ptr, void *(&)[N], size_t &&space, size_t) {
+        // Align the end of last pointer to the getAlignment() byte boundary so
+        // the memory requirement is a multiple of getAlignment()
+        if (ptr) {
+            ptr = std::align(getAlignment(), 1, ptr, space);
+        }
+    }
+
+    template <size_t N, size_t I, typename Head, typename... Tail>
+    static void alignPointers(void *ptr, void *(&pointers)[N], size_t &&space,
+                              size_t n) {
+        constexpr size_t size_of_type = sizeof(Head);
+        if (ptr) {
+            ptr = std::align(getAlignment(), size_of_type, ptr, space);
+            if (ptr) {
+                pointers[I] = ptr;
+                ptr = static_cast<void *>(static_cast<Head *>(ptr) + n);
+                space -= size_of_type * n;
+
+                alignPointers<N, I + 1, Tail...>(ptr, pointers,
+                                                 std::move(space), n);
+            }
+        }
+    }
+};
+
+// ==== Accessor ====
+// - Used to access data stored in a pointers array
+template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
+  private:
+    using FullRow = Row<Variables...>;
+    size_t num_elements = 0;
+    AlignedPointers<MIN_ALIGN, Variables...> pointers;
+
+  public:
+    DEVICE Accessor() {}
+
+    HOST Accessor(size_t n, void *ptr) : num_elements(n), pointers(n, ptr) {}
 
     template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] auto get() const {
@@ -469,42 +557,37 @@ template <typename... Variables> struct Accessor {
 };
 
 // ==== StructureOfArrays ====
+// - Used on the host to manage the accessor and the memory
 template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
   private:
     static_assert(Row<Variables...>::unique_names,
                   "StructureOfArrays has clashing names");
 
-    static constexpr size_t num_pointers = sizeof...(Variables);
-    using Pointers = Array<void *, num_pointers>;
     using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
+    using Pointers = AlignedPointers<MIN_ALIGN, Variables...>;
 
     template <size_t MA, typename M, typename... V>
     friend struct StructureOfArrays;
 
   public:
     using FullRow = Row<Variables...>;
-    using ThisAccessor = Accessor<Variables...>;
+    using ThisAccessor = Accessor<MIN_ALIGN, Variables...>;
 
   private:
     const MemOps &memory_ops;
     const size_t max_num_elements;
     std::unique_ptr<uint8_t, typename MemOps::Deallocate> memory;
-    ThisAccessor local_accessor = {};
-    ThisAccessor *const remote_accessor = nullptr;
+    ThisAccessor local_accessor;
 
   public:
-    StructureOfArrays(const MemOps &mem_ops, size_t n, ThisAccessor *accessor)
+    StructureOfArrays(const MemOps &mem_ops, size_t n,
+                      ThisAccessor *accessor = nullptr)
         : memory_ops(mem_ops), max_num_elements(n),
           memory(static_cast<uint8_t *>(
               memory_ops.allocate(getMemReq(max_num_elements)))),
-          local_accessor(
-              max_num_elements,
-              makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                  static_cast<void *>(memory.get()), Pointers{}, ~0ul,
-                  max_num_elements)),
-          remote_accessor(accessor) {
-        updateAccessor();
+          local_accessor(max_num_elements, static_cast<void *>(memory.get())) {
+        updateAccessor(accessor);
         memory_ops.memset(static_cast<void *>(memory.get()), 0,
                           getMemReq(max_num_elements));
     }
@@ -512,12 +595,12 @@ struct StructureOfArrays {
     // If the number of elements is very large, use the above constructor and
     // initialize the values in place to avoid running out of memory
     StructureOfArrays(const MemOps &mem_ops, const std::vector<FullRow> &rows,
-                      ThisAccessor *accessor)
+                      ThisAccessor *accessor = nullptr)
         : StructureOfArrays(mem_ops, rows.size(), accessor) {
         if (memory_ops.host_access_requires_copy) {
             CMemoryOperations c_mem_ops;
-            ThisAccessor a;
-            CSoa host_soa(c_mem_ops, rows, &a);
+            CSoa host_soa(c_mem_ops, rows);
+
             memory_ops.memcpy(local_accessor.template get<0>(),
                               host_soa.local_accessor.template get<0>(),
                               getAlignedBlockSize());
@@ -530,21 +613,7 @@ struct StructureOfArrays {
     }
 
     [[nodiscard]] static size_t getMemReq(size_t n) {
-        // Get proper begin alignment: the strictest (largest) alignment
-        // requirement between all the types and the MIN_ALIGN
-        alignas(getAlignment()) uint8_t dummy = 0;
-        constexpr size_t max_size = ~size_t(0);
-        size_t space = max_size;
-        [[maybe_unused]] const auto pointers =
-            makeAlignedPointers<0, typename PairTraits<Variables>::Type...>(
-                static_cast<void *>(&dummy), Pointers{}, std::move(space), n);
-
-        const size_t num_bytes = max_size - space;
-        // Require a block of (M + 1) * alignment bytes, where M is an integer.
-        // The +1 is for manual alignment, if the memory allocation doesn't have
-        // a strict enough alignment requirement.
-        return num_bytes + bytesMissingFromAlignment(num_bytes) +
-               getAlignment();
+        return Pointers::getMemReq(n);
     }
 
     template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
@@ -553,7 +622,7 @@ struct StructureOfArrays {
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
-        return getMemReq(max_num_elements) - getAlignment();
+        return getMemReq(max_num_elements) - Pointers::getAlignment();
     }
 
     [[nodiscard]] uintptr_t getAlignmentBytes() const {
@@ -569,15 +638,13 @@ struct StructureOfArrays {
         return static_cast<void *>(memory.get());
     }
 
-    void decreaseBy(size_t n, bool update_accessor = false) {
+    void decreaseBy(size_t n, ThisAccessor *accessor = nullptr) {
         local_accessor.size() -= std::min(n, local_accessor.size());
-        if (update_accessor) {
-            updateAccessor();
-        }
+        updateAccessor(accessor);
     }
 
     template <CompileTimeString Cts1, CompileTimeString Cts2>
-    void swap(bool update_accessor = false) {
+    void swap(ThisAccessor *accessor = nullptr) {
         using G1 = GetType<Cts1, Variables...>;
         using G2 = GetType<Cts2, Variables...>;
 
@@ -587,33 +654,32 @@ struct StructureOfArrays {
         std::swap(local_accessor.template getRef<Cts1>(),
                   local_accessor.template getRef<Cts2>());
 
-        if (update_accessor) {
-            updateAccessor();
-        }
+        updateAccessor(accessor);
     }
 
     template <CompileTimeString Cts1, CompileTimeString Cts2,
               CompileTimeString Cts3, CompileTimeString... Tail>
-    void swap(bool update_accessor = false) {
+    void swap(ThisAccessor *accessor = nullptr) {
         swap<Cts1, Cts2>();
         swap<Cts3, Tail...>();
-
-        if (update_accessor) {
-            updateAccessor();
-        }
+        updateAccessor(accessor);
     }
 
     template <typename F, typename... Args>
-    auto updateAccessor(F f, Args... args) const {
-        return f(static_cast<void *>(remote_accessor),
-                 static_cast<const void *>(&local_accessor),
-                 sizeof(ThisAccessor), args...);
+    void updateAccessor(ThisAccessor *accessor, F f, Args... args) const {
+        if (accessor != nullptr) {
+            f(static_cast<void *>(accessor),
+              static_cast<const void *>(&local_accessor), sizeof(ThisAccessor),
+              args...);
+        }
     }
 
-    auto updateAccessor() const {
-        return memory_ops.update(static_cast<void *>(remote_accessor),
-                                 static_cast<const void *>(&local_accessor),
-                                 sizeof(ThisAccessor));
+    void updateAccessor(ThisAccessor *accessor) const {
+        if (accessor != nullptr) {
+            memory_ops.update(static_cast<void *>(accessor),
+                              static_cast<const void *>(&local_accessor),
+                              sizeof(ThisAccessor));
+        }
     }
 
     std::vector<FullRow> getRows() const {
@@ -625,8 +691,7 @@ struct StructureOfArrays {
             // Create this structure backed by host memory, then call it's
             // version of this function
             CMemoryOperations c_mem_ops;
-            ThisAccessor a;
-            CSoa host_soa(c_mem_ops, max_num_elements, &a);
+            CSoa host_soa(c_mem_ops, max_num_elements);
             memory_ops.memcpy(host_soa.local_accessor.template get<0>(),
                               local_accessor.template get<0>(),
                               getAlignedBlockSize());
@@ -642,6 +707,9 @@ struct StructureOfArrays {
             return rows;
         }
     }
+
+    const ThisAccessor &getAccess() const { return local_accessor; }
+    ThisAccessor &getAccess() { return local_accessor; }
 
     // Internal to internal
     template <CompileTimeString DstName, CompileTimeString SrcName, typename F,
@@ -747,68 +815,6 @@ struct StructureOfArrays {
 
     auto memset(void *dst, int pattern, size_t bytes) const {
         return memory_ops.memset(dst, pattern, bytes);
-    }
-
-    [[nodiscard]] constexpr static size_t bytesMissingFromAlignment(size_t n) {
-        return (getAlignment() - bytesOverAlignment(n)) & (getAlignment() - 1);
-    }
-
-    [[nodiscard]] constexpr static size_t bytesOverAlignment(size_t n) {
-        return n & (getAlignment() - 1);
-    }
-
-    template <typename T, typename... Ts> consteval static size_t maxAlign() {
-        if constexpr (sizeof...(Ts) == 0) {
-            return alignof(T);
-        } else {
-            return std::max(alignof(T), maxAlign<Ts...>());
-        }
-    }
-
-    [[nodiscard]] consteval static size_t getAlignment() {
-        static_assert((MIN_ALIGN & (MIN_ALIGN - 1)) == 0,
-                      "MIN_ALIGN isn't a power of two");
-        // Aligned by the strictest (largest) alignment requirement between all
-        // the types and the MIN_ALIGN template argument
-        // N.B. A statement with multiple alignas declarations is supposed to
-        // pick the strictest one, but GCC for some reason picks the last one
-        // that is applied...
-        // If it weren't for that bug, could use:
-        // struct alignas(MIN_ALIGN) alignas(typename
-        // PairTraits<Variables>::Type...) Aligned {}; return alignof(Aligned);
-        struct alignas(MIN_ALIGN) MinAligned {};
-        return maxAlign<MinAligned, typename PairTraits<Variables>::Type...>();
-    }
-
-    template <size_t>
-    [[nodiscard]] static Pointers
-    makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space, size_t) {
-        // Align the end of last pointer to the getAlignment() byte boundary so
-        // the memory requirement is a multiple of getAlignment()
-        if (ptr) {
-            ptr = std::align(getAlignment(), 1, ptr, space);
-        }
-        return pointers;
-    }
-
-    template <size_t I, typename Head, typename... Tail>
-    [[nodiscard]] static Pointers
-    makeAlignedPointers(void *ptr, Pointers pointers, size_t &&space,
-                        size_t n) {
-        constexpr size_t size_of_type = sizeof(Head);
-        if (ptr) {
-            ptr = std::align(getAlignment(), size_of_type, ptr, space);
-            if (ptr) {
-                pointers[I] = ptr;
-                ptr = static_cast<void *>(static_cast<Head *>(ptr) + n);
-                space -= size_of_type * n;
-
-                return makeAlignedPointers<I + 1, Tail...>(ptr, pointers,
-                                                           std::move(space), n);
-            }
-        }
-
-        return Pointers{};
     }
 };
 } // namespace aosoa
