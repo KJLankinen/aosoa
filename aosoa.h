@@ -178,6 +178,15 @@ struct FindString {
         IndexOfString<MatchStr, Strings...>::i != IndexOfString<MatchStr>::i;
 };
 
+// ==== GetType ====
+// - Get index and type corresponding to Cts
+template <CompileTimeString Cts, typename... Variables> struct GetType {
+    static constexpr size_t i =
+        IndexOfString<Cts, PairTraits<Variables>::name...>::i;
+    using Type =
+        typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
+};
+
 // ==== MemoryOperations ====
 // - These are used by StructureOfArrays to perform
 //     - memory allocation at construction
@@ -389,13 +398,6 @@ struct StructureOfArrays {
     using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
 
   public:
-    template <CompileTimeString Cts> struct GetType {
-        static constexpr size_t i =
-            IndexOfString<Cts, PairTraits<Variables>::name...>::i;
-        using Type =
-            typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
-    };
-
     using FullRow = Row<Variables...>;
 
     struct Accessor {
@@ -410,7 +412,7 @@ struct StructureOfArrays {
 
         template <CompileTimeString Cts>
         HOST DEVICE [[nodiscard]] auto get() const {
-            using G = GetType<Cts>;
+            using G = GetType<Cts, Variables...>;
             return static_cast<G::Type *>(pointers[G::i]);
         }
 
@@ -437,7 +439,7 @@ struct StructureOfArrays {
 
         template <CompileTimeString Cts>
         HOST DEVICE [[nodiscard]] void *&getRef() {
-            using G = GetType<Cts>;
+            using G = GetType<Cts, Variables...>;
             return pointers[G::i];
         }
 
@@ -549,7 +551,8 @@ struct StructureOfArrays {
     }
 
     template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
-        return local_accessor.size() * sizeof(typename GetType<Cts>::Type);
+        return local_accessor.size() *
+               sizeof(typename GetType<Cts, Variables...>::Type);
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
@@ -578,8 +581,8 @@ struct StructureOfArrays {
 
     template <CompileTimeString Cts1, CompileTimeString Cts2>
     void swap(bool update_accessor = false) {
-        using G1 = GetType<Cts1>;
-        using G2 = GetType<Cts2>;
+        using G1 = GetType<Cts1, Variables...>;
+        using G2 = GetType<Cts2, Variables...>;
 
         static_assert(IsSame<typename G1::Type, typename G2::Type>::value,
                       "Mismatched types for swap");
@@ -647,8 +650,8 @@ struct StructureOfArrays {
     template <CompileTimeString DstName, CompileTimeString SrcName, typename F,
               typename... Args>
     auto memcpy(F f, Args... args) {
-        using Dst = GetType<DstName>;
-        using Src = GetType<SrcName>;
+        using Dst = GetType<DstName, Variables...>;
+        using Src = GetType<SrcName, Variables...>;
         static_assert(IsSame<typename Dst::Type, typename Src::Type>::value,
                       "Mismatched types for memcpy");
         static_assert(DstName != SrcName, "DstName and SrcName are the same");
@@ -661,8 +664,8 @@ struct StructureOfArrays {
     // Internal to internal
     template <CompileTimeString DstName, CompileTimeString SrcName>
     auto memcpy() {
-        using Dst = GetType<DstName>;
-        using Src = GetType<SrcName>;
+        using Dst = GetType<DstName, Variables...>;
+        using Src = GetType<SrcName, Variables...>;
         static_assert(IsSame<typename Dst::Type, typename Src::Type>::value,
                       "Mismatched types for memcpy");
         static_assert(DstName != SrcName, "DstName and SrcName are the same");
@@ -676,7 +679,7 @@ struct StructureOfArrays {
     template <CompileTimeString DstName, typename SrcType, typename F,
               typename... Args>
     auto memcpy(F f, const SrcType *src, Args... args) {
-        using Dst = GetType<DstName>;
+        using Dst = GetType<DstName, Variables...>;
         static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
         return memcpy(f, local_accessor.template get<DstName>(),
@@ -687,7 +690,7 @@ struct StructureOfArrays {
     // External to internal
     template <CompileTimeString DstName, typename SrcType>
     auto memcpy(const SrcType *src) {
-        using Dst = GetType<DstName>;
+        using Dst = GetType<DstName, Variables...>;
         static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
         return memcpy(local_accessor.template get<DstName>(),
@@ -698,7 +701,7 @@ struct StructureOfArrays {
     template <CompileTimeString SrcName, typename DstType, typename F,
               typename... Args>
     auto memcpy(F f, DstType *dst, Args... args) {
-        using Src = GetType<SrcName>;
+        using Src = GetType<SrcName, Variables...>;
         static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
         return memcpy(f, static_cast<void *>(dst),
@@ -709,7 +712,7 @@ struct StructureOfArrays {
     // Internal to external
     template <CompileTimeString SrcName, typename DstType>
     auto memcpy(DstType *dst) {
-        using Src = GetType<SrcName>;
+        using Src = GetType<SrcName, Variables...>;
         static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
         return memcpy(static_cast<void *>(dst),
