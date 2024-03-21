@@ -377,12 +377,98 @@ std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
     return row.output(os) << "\n}";
 }
 
+// ==== Accessor ====
+// - Used to access data stored in a pointers array
+template <typename... Variables> struct Accessor {
+  private:
+    using FullRow = Row<Variables...>;
+    static constexpr size_t num_pointers = sizeof...(Variables);
+    size_t num_elements = 0;
+    Array<void *, num_pointers> pointers = {};
+
+  public:
+    HOST DEVICE Accessor() {}
+    HOST DEVICE Accessor(size_t n, const Array<void *, num_pointers> &p)
+        : num_elements(n), pointers(p) {}
+
+    template <CompileTimeString Cts>
+    HOST DEVICE [[nodiscard]] auto get() const {
+        using G = GetType<Cts, Variables...>;
+        return static_cast<G::Type *>(pointers[G::i]);
+    }
+
+    template <size_t I> HOST DEVICE [[nodiscard]] auto get() const {
+        using Type =
+            typename NthType<I, typename PairTraits<Variables>::Type...>::Type;
+        return static_cast<Type *>(pointers[I]);
+    }
+
+    template <CompileTimeString Cts, size_t I>
+    HOST DEVICE [[nodiscard]] auto get() const {
+        return get<Cts>()[I];
+    }
+
+    template <CompileTimeString Cts>
+    HOST DEVICE [[nodiscard]] auto get(size_t i) const {
+        return get<Cts>()[i];
+    }
+
+    HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
+        return toRow<Variables...>(i);
+    }
+
+    template <CompileTimeString Cts> HOST DEVICE [[nodiscard]] void *&getRef() {
+        using G = GetType<Cts, Variables...>;
+        return pointers[G::i];
+    }
+
+    template <CompileTimeString Cts, typename T>
+    HOST DEVICE void set(size_t i, T value) const {
+        get<Cts>()[i] = value;
+    }
+
+    HOST DEVICE void set(size_t i, const FullRow &t) const {
+        fromRow<Variables...>(i, t);
+    }
+
+    HOST DEVICE void set(size_t i, FullRow &&t) const {
+        fromRow<Variables...>(i, std::move(t));
+    }
+
+    HOST DEVICE size_t &size() { return num_elements; }
+    HOST DEVICE const size_t &size() const { return num_elements; }
+
+  private:
+    template <typename Head, typename... Tail>
+    [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
+        using H = PairTraits<Head>;
+        if constexpr (sizeof...(Tail) > 0) {
+            return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
+        } else {
+            return Row<Head>(get<H::name>(i));
+        }
+    }
+
+    template <typename Head, typename... Tail>
+    HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
+        using H = PairTraits<Head>;
+        set<H::name, typename H::Type>(i, row.template get<H::name>());
+        if constexpr (sizeof...(Tail) > 0) {
+            fromRow<Tail...>(i, row);
+        }
+    }
+
+    template <typename Head, typename... Tail>
+    HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
+        using H = PairTraits<Head>;
+        set<H::name, typename H::Type>(i, row.template get<H::name>());
+        if constexpr (sizeof...(Tail) > 0) {
+            fromRow<Tail...>(i, std::move(row));
+        }
+    }
+};
+
 // ==== StructureOfArrays ====
-// TODO:
-// - Move Accessor out of StructureOfArrays, so it's not dependent on the
-//   parent type
-// - Remove Accessor friend SoA and use get instead of pointers[] with
-//   StructureOfArrays
 template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
   private:
@@ -391,113 +477,24 @@ struct StructureOfArrays {
 
     static constexpr size_t num_pointers = sizeof...(Variables);
     using Pointers = Array<void *, num_pointers>;
+    using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
 
     template <size_t MA, typename M, typename... V>
     friend struct StructureOfArrays;
 
-    using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
-
   public:
     using FullRow = Row<Variables...>;
-
-    struct Accessor {
-      private:
-        size_t num_elements = 0;
-        Pointers pointers = {};
-
-      public:
-        HOST DEVICE Accessor() {}
-        HOST DEVICE Accessor(size_t n, const Pointers &p)
-            : num_elements(n), pointers(p) {}
-
-        template <CompileTimeString Cts>
-        HOST DEVICE [[nodiscard]] auto get() const {
-            using G = GetType<Cts, Variables...>;
-            return static_cast<G::Type *>(pointers[G::i]);
-        }
-
-        template <size_t I> HOST DEVICE [[nodiscard]] auto get() const {
-            using Type =
-                typename NthType<I,
-                                 typename PairTraits<Variables>::Type...>::Type;
-            return static_cast<Type *>(pointers[I]);
-        }
-
-        template <CompileTimeString Cts, size_t I>
-        HOST DEVICE [[nodiscard]] auto get() const {
-            return get<Cts>()[I];
-        }
-
-        template <CompileTimeString Cts>
-        HOST DEVICE [[nodiscard]] auto get(size_t i) const {
-            return get<Cts>()[i];
-        }
-
-        HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
-            return toRow<Variables...>(i);
-        }
-
-        template <CompileTimeString Cts>
-        HOST DEVICE [[nodiscard]] void *&getRef() {
-            using G = GetType<Cts, Variables...>;
-            return pointers[G::i];
-        }
-
-        template <CompileTimeString Cts, typename T>
-        HOST DEVICE void set(size_t i, T value) const {
-            get<Cts>()[i] = value;
-        }
-
-        HOST DEVICE void set(size_t i, const FullRow &t) const {
-            fromRow<Variables...>(i, t);
-        }
-
-        HOST DEVICE void set(size_t i, FullRow &&t) const {
-            fromRow<Variables...>(i, std::move(t));
-        }
-
-        HOST DEVICE size_t &size() { return num_elements; }
-        HOST DEVICE const size_t &size() const { return num_elements; }
-
-      private:
-        template <typename Head, typename... Tail>
-        [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
-            using H = PairTraits<Head>;
-            if constexpr (sizeof...(Tail) > 0) {
-                return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
-            } else {
-                return Row<Head>(get<H::name>(i));
-            }
-        }
-
-        template <typename Head, typename... Tail>
-        HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
-            using H = PairTraits<Head>;
-            set<H::name, typename H::Type>(i, row.template get<H::name>());
-            if constexpr (sizeof...(Tail) > 0) {
-                fromRow<Tail...>(i, row);
-            }
-        }
-
-        template <typename Head, typename... Tail>
-        HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
-            using H = PairTraits<Head>;
-            set<H::name, typename H::Type>(i, row.template get<H::name>());
-            if constexpr (sizeof...(Tail) > 0) {
-                fromRow<Tail...>(i, std::move(row));
-            }
-        }
-    };
+    using ThisAccessor = Accessor<Variables...>;
 
   private:
     const MemOps &memory_ops;
     const size_t max_num_elements;
     std::unique_ptr<uint8_t, typename MemOps::Deallocate> memory;
-    Accessor local_accessor = {};
-    Accessor *const remote_accessor = nullptr;
+    ThisAccessor local_accessor = {};
+    ThisAccessor *const remote_accessor = nullptr;
 
   public:
-    StructureOfArrays(const MemOps &mem_ops, size_t n, Accessor *accessor)
+    StructureOfArrays(const MemOps &mem_ops, size_t n, ThisAccessor *accessor)
         : memory_ops(mem_ops), max_num_elements(n),
           memory(static_cast<uint8_t *>(
               memory_ops.allocate(getMemReq(max_num_elements)))),
@@ -515,11 +512,11 @@ struct StructureOfArrays {
     // If the number of elements is very large, use the above constructor and
     // initialize the values in place to avoid running out of memory
     StructureOfArrays(const MemOps &mem_ops, const std::vector<FullRow> &rows,
-                      Accessor *accessor)
+                      ThisAccessor *accessor)
         : StructureOfArrays(mem_ops, rows.size(), accessor) {
         if (memory_ops.host_access_requires_copy) {
             CMemoryOperations c_mem_ops;
-            typename CSoa::Accessor a;
+            ThisAccessor a;
             CSoa host_soa(c_mem_ops, rows, &a);
             memory_ops.memcpy(local_accessor.template get<0>(),
                               host_soa.local_accessor.template get<0>(),
@@ -609,14 +606,14 @@ struct StructureOfArrays {
     template <typename F, typename... Args>
     auto updateAccessor(F f, Args... args) const {
         return f(static_cast<void *>(remote_accessor),
-                 static_cast<const void *>(&local_accessor), sizeof(Accessor),
-                 args...);
+                 static_cast<const void *>(&local_accessor),
+                 sizeof(ThisAccessor), args...);
     }
 
     auto updateAccessor() const {
         return memory_ops.update(static_cast<void *>(remote_accessor),
                                  static_cast<const void *>(&local_accessor),
-                                 sizeof(Accessor));
+                                 sizeof(ThisAccessor));
     }
 
     std::vector<FullRow> getRows() const {
@@ -628,7 +625,7 @@ struct StructureOfArrays {
             // Create this structure backed by host memory, then call it's
             // version of this function
             CMemoryOperations c_mem_ops;
-            typename CSoa::Accessor a;
+            ThisAccessor a;
             CSoa host_soa(c_mem_ops, max_num_elements, &a);
             memory_ops.memcpy(host_soa.local_accessor.template get<0>(),
                               local_accessor.template get<0>(),

@@ -68,7 +68,7 @@ typedef aosoa::MemoryOperations<true, aosoa::CAllocator, aosoa::CDeallocator,
 
 template <size_t Alignment, CompileTimeString Cts>
 void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
-                            typename CBalls<Alignment>::Accessor &balls,
+                            typename CBalls<Alignment>::ThisAccessor &balls,
                             Result &result) {
     for (size_t i = 0; i < init.size(); i++) {
         ASSERT(balls.template get<Cts>(i) == init[i].template get<Cts>(),
@@ -79,7 +79,7 @@ void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
 template <size_t Alignment, CompileTimeString Cts, CompileTimeString Head,
           CompileTimeString... Tail>
 void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
-                            typename CBalls<Alignment>::Accessor &balls,
+                            typename CBalls<Alignment>::ThisAccessor &balls,
                             Result &result) {
     assertUntouchedCorrect<Alignment, Cts>(init, balls, result);
     if (result.success) {
@@ -93,7 +93,7 @@ void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
 }
 
 template <size_t S, CompileTimeString Cts>
-void assertAligned(typename CBalls<S>::Accessor &balls, Result &result,
+void assertAligned(typename CBalls<S>::ThisAccessor &balls, Result &result,
                    size_t alignment) {
     constexpr size_t max_size_t = ~0ul;
     size_t space = max_size_t;
@@ -104,7 +104,7 @@ void assertAligned(typename CBalls<S>::Accessor &balls, Result &result,
 
 template <size_t S, CompileTimeString Cts, CompileTimeString Head,
           CompileTimeString... Tail>
-void assertAligned(typename CBalls<S>::Accessor &balls, Result &result,
+void assertAligned(typename CBalls<S>::ThisAccessor &balls, Result &result,
                    size_t alignment) {
     assertAligned<S, Cts>(balls, result, alignment);
     if (result.success) {
@@ -383,7 +383,7 @@ constexpr static std::array tests = {
              typedef CBalls<alignment> Balls;
 
              const std::vector<Ball> init(n);
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              for (size_t i = 0; i < accessor.size(); i++) {
@@ -399,7 +399,7 @@ constexpr static std::array tests = {
              typedef Ball<alignment> Ball;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
 
              for (size_t i = 0; i < accessor.size(); i++) {
@@ -439,7 +439,7 @@ constexpr static std::array tests = {
                      i++;
                  }
              }
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              for (size_t i = 0; i < accessor.size(); i++) {
@@ -476,7 +476,7 @@ constexpr static std::array tests = {
 
              // Using dummy memory ops that uses another copy
              const DummyDeviceMemoryOps dummy_memory_ops;
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(dummy_memory_ops, init, &accessor);
 
              for (size_t i = 0; i < init.size(); i++) {
@@ -493,7 +493,7 @@ constexpr static std::array tests = {
              typedef CBalls<alignment> Balls;
 
              std::vector<Ball> init(n);
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              ASSERT(balls.getMemReq<"radius">() == sizeof(double) * n,
@@ -507,7 +507,7 @@ constexpr static std::array tests = {
              typedef CBalls<alignment> Balls;
 
              std::vector<Ball> init(n);
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.decreaseBy(28, true);
 
@@ -521,7 +521,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 128;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
 
              ASSERT(balls.getAlignedBlockSize() ==
@@ -539,7 +539,7 @@ constexpr static std::array tests = {
                  Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
                  Ball(0.0, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              uint8_t *ptr = static_cast<uint8_t *>(balls.data());
              ptr += balls.getAlignmentBytes();
@@ -555,7 +555,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 666;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6);
 
@@ -568,7 +568,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 666;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6, true);
 
@@ -581,7 +581,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 666;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6);
              balls.updateAccessor();
@@ -595,7 +595,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 666;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(3);
              balls.decreaseBy(3, true);
@@ -613,7 +613,7 @@ constexpr static std::array tests = {
                  Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
                  Ball(0.0, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.swap<"position_x", "position_y">();
              ASSERT(accessor.get<"position_x">(0) == 666.666,
@@ -629,7 +629,7 @@ constexpr static std::array tests = {
                  Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
                  Ball(0.0, 13.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.swap<"position_x", "position_y">(true);
              ASSERT(accessor.get<"position_y">(0) == 666.666,
@@ -647,7 +647,7 @@ constexpr static std::array tests = {
                  Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
                  Ball(0.0, 13.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.swap<"position_x", "position_y">();
              balls.updateAccessor();
@@ -668,7 +668,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              balls.swap<"position_x", "position_y", "position_z", "radius">(
@@ -703,7 +703,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              balls.swap<"position_x", "position_y", "position_y", "position_z">(
@@ -734,7 +734,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              balls.swap<"position_x", "position_y", "position_y",
@@ -765,7 +765,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
 
              balls.swap<"position_x", "position_y", "position_y",
@@ -792,7 +792,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 666;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6);
              balls.updateAccessor(std::memcpy);
@@ -820,7 +820,7 @@ constexpr static std::array tests = {
                  Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
              };
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              const auto rows = balls.getRows();
 
@@ -854,7 +854,7 @@ constexpr static std::array tests = {
 
              // Using dummy memory ops that uses another copy
              const DummyDeviceMemoryOps dummy_memory_ops;
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(dummy_memory_ops, init, &accessor);
              const auto rows = balls.getRows();
 
@@ -878,7 +878,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.memcpy<"position_y", "position_x">();
 
@@ -908,7 +908,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.memcpy<"position_y", "position_x">(std::memcpy);
 
@@ -932,7 +932,7 @@ constexpr static std::array tests = {
              constexpr size_t alignment = 128;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, 1, &accessor);
              // Uncommenting the line below should give a compiler error
              // balls.memcpy<"position_x", "position_x">(std::memcpy);
@@ -948,7 +948,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              const std::vector<double> src{0.0, 9.0};
              balls.memcpy<"position_y">(src.data());
@@ -979,7 +979,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              const std::vector<double> src{0.0, 9.0};
              balls.memcpy<"position_y">(src.data());
@@ -1010,7 +1010,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              std::vector<double> dst{666.0, 666.0};
              balls.memcpy<"position_y">(dst.data());
@@ -1036,7 +1036,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              std::vector<double> dst{666.0, 666.0};
              balls.memcpy<"position_y">(std::memcpy, dst.data());
@@ -1062,7 +1062,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.memset<"index">(0);
              ASSERT(accessor.get<"index">(0) == 0, "index[0] set incorrectly");
@@ -1085,7 +1085,7 @@ constexpr static std::array tests = {
                  Ball(9.0, 10.0, 11.0, 12.0, 13.0f, 14.0f, 15.0f, 16u, -17,
                       true)};
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.memset<"index">(std::memset, 0);
              ASSERT(accessor.get<"index">(0) == 0, "index[0] set incorrectly");
@@ -1117,7 +1117,7 @@ constexpr static std::array tests = {
                  Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
              };
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              balls.decreaseBy(10, true);
              balls.memset<"index">(0);
@@ -1162,7 +1162,7 @@ constexpr static std::array tests = {
                  Ball(0.0, 1.0, 2.0, 3.0, 4.0f, 5.0f, 6.0f, 7u, -8, false),
              };
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, init, &accessor);
              // This is false, so accessor is not updated, but still the memset
              // should've gone through
@@ -1195,7 +1195,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 1000;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              assertAligned<alignment, "position_x", "position_y", "position_z",
                            "radius", "color_r", "color_g", "color_b", "index",
@@ -1209,7 +1209,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 1000;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              assertAligned<alignment, "position_x", "position_y", "position_z",
                            "radius", "color_r", "color_g", "color_b", "index",
@@ -1223,7 +1223,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 1000;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              assertAligned<alignment, "position_x", "position_y", "position_z",
                            "radius", "color_r", "color_g", "color_b", "index",
@@ -1237,7 +1237,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 1000;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              assertAligned<alignment, "position_x", "position_y", "position_z",
                            "radius", "color_r", "color_g", "color_b", "index",
@@ -1251,7 +1251,7 @@ constexpr static std::array tests = {
              constexpr size_t n = 1000;
              typedef CBalls<alignment> Balls;
 
-             Balls::Accessor accessor;
+             Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              assertAligned<alignment, "position_x", "position_y", "position_z",
                            "radius", "color_r", "color_g", "color_b", "index",
@@ -1313,7 +1313,7 @@ constexpr static std::array tests = {
                  std::vector<Ball> init;
                  const size_t n = init.max_size() + 1;
 
-                 Balls::Accessor accessor;
+                 Balls::ThisAccessor accessor;
                  Balls balls(memory_ops, std::vector<Ball>(n), &accessor);
              } catch (std::length_error &e) {
                  constexpr CompileTimeString substr = "max_size"_cts;
@@ -1335,7 +1335,7 @@ constexpr static std::array tests = {
                  std::vector<Ball> init;
                  const size_t n = init.max_size();
 
-                 Balls::Accessor accessor;
+                 Balls::ThisAccessor accessor;
                  Balls balls(memory_ops, std::vector<Ball>(n), &accessor);
              } catch (std::bad_alloc &e) {
                  constexpr CompileTimeString substr = "bad_alloc"_cts;
