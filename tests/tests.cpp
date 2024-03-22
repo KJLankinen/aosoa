@@ -1,4 +1,5 @@
 #include "../aosoa.h"
+#include "json.hpp"
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -213,6 +214,19 @@ constexpr static std::array tests = {
          [](Result &result) {
              const RowDouble row(1.0f, 16);
              ASSERT(row == row, "Row should be equal to itself");
+         }),
+    Test("Row_to_from_json",
+         [](Result &result) {
+             using Row =
+                 const Row<Variable<float, "foo">, Variable<double, "bar">,
+                           Variable<int, "baz">, Variable<bool, "foobar">>;
+
+             const Row row(1.0f, 10.0, -666, true);
+             const nlohmann::json j = row;
+             const Row row2 = j;
+
+             ASSERT(row == row2, "Row should be equal to itself round tripped "
+                                 "through json conversion");
          }),
     Test("ShouldFailCompilationIfEnabled",
          [](Result &) {
@@ -1174,8 +1188,6 @@ constexpr static std::array tests = {
              std::vector<uint8_t> data(bytes);
 
              Pointers pointers(n, data.data());
-             printf("%lu, %lu\n", reinterpret_cast<uintptr_t>(pointers[0]),
-                    reinterpret_cast<uintptr_t>(pointers[1]));
              assertAligned(pointers, result);
              ASSERT(result.success, result.msg);
          }),

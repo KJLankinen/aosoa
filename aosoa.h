@@ -234,10 +234,22 @@ using namespace detail;
 //   the sense that you can (only) access it's members by name, using a
 //   templated syntax like auto foo = row.get<"foo">();
 template <typename... Vars> struct Row;
+template <typename T, typename... Vars> void to_json(T &, const Row<Vars...> &);
+template <typename T, typename... Vars>
+void from_json(const T &, Row<Vars...> &);
 
 // Specialize Row for a single type
 template <typename Var> struct Row<Var> {
     template <typename... Ts> friend struct Row;
+
+    template <typename T, typename... Ts>
+    friend void to_json(T &, const Row<Ts...> &);
+
+    template <typename T, typename... Ts>
+    friend void from_json(const T &, Row<Ts...> &);
+
+    template <typename T>
+    friend std::ostream &operator<<(std::ostream &, const Row<T> &);
 
     using Type = PairTraits<Var>::Type;
     static constexpr auto name = PairTraits<Var>::name;
@@ -269,15 +281,20 @@ template <typename Var> struct Row<Var> {
         get<Cts>() = u;
     }
 
-    template <typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
-
     bool operator==(const Row<Var> &rhs) const { return head == rhs.head; }
 
   private:
     std::ostream &output(std::ostream &os) const {
-        os << PairTraits<Var>::name.str << ": " << head;
+        os << name.str << ": " << head;
         return os;
+    }
+
+    template <typename T> void convert_to_json(T &j) const {
+        j[name.str] = head;
+    }
+
+    template <typename T> void construct_from_json(const T &j) {
+        j.at(name.str).get_to(head);
     }
 
     template <CompileTimeString MemberName, CompileTimeString Candidate>
@@ -290,6 +307,15 @@ template <typename Var> struct Row<Var> {
 template <typename Var1, typename Var2, typename... Vars>
 struct Row<Var1, Var2, Vars...> {
     template <typename... Ts> friend struct Row;
+
+    template <typename T, typename... Ts>
+    friend void to_json(T &, const Row<Ts...> &);
+
+    template <typename T, typename... Ts>
+    friend void from_json(const T &, Row<Ts...> &);
+
+    template <typename... Ts>
+    friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
 
     using Type = PairTraits<Var1>::Type;
     static constexpr auto name = PairTraits<Var1>::name;
@@ -333,16 +359,24 @@ struct Row<Var1, Var2, Vars...> {
         get<Cts>() = u;
     }
 
-    template <typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
     bool operator==(const ThisType &rhs) const {
         return head == rhs.head && tail == rhs.tail;
     }
 
   private:
     std::ostream &output(std::ostream &os) const {
-        os << PairTraits<Var1>::name.str << ": " << head << "\n  ";
+        os << name.str << ": " << head << "\n  ";
         return tail.output(os);
+    }
+
+    template <typename T> void convert_to_json(T &j) const {
+        j[name.str] = head;
+        tail.convert_to_json(j);
+    }
+
+    template <typename T> void construct_from_json(const T &j) {
+        j.at(name.str).get_to(head);
+        tail.construct_from_json(j);
     }
 
     // ==== Uniqueness of names ====
@@ -364,6 +398,18 @@ template <typename... Vars>
 std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
     os << "Row {\n  ";
     return row.output(os) << "\n}";
+}
+
+// From Row to json
+template <typename T, typename... Vars>
+void to_json(T &j, const Row<Vars...> &from) {
+    from.convert_to_json(j);
+}
+
+// From json to Row
+template <typename T, typename... Vars>
+void from_json(const T &j, Row<Vars...> &to) {
+    to.construct_from_json(j);
 }
 
 // ==== AlignedPointers ====
