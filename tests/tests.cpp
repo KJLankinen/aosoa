@@ -57,8 +57,10 @@ using Balls = StructureOfArrays<
 // clang-format on
 
 template <size_t Alignment> using CBalls = Balls<Alignment, CMemoryOperations>;
-
 template <size_t Alignment> using Ball = CBalls<Alignment>::FullRow;
+template <size_t Alignment>
+using BallAccessor = CBalls<Alignment>::ThisAccessor;
+
 const CMemoryOperations memory_ops;
 
 typedef MemoryOperations<true, CAllocator, CDeallocator, CMemcpy, CMemset>
@@ -1341,6 +1343,155 @@ constexpr static std::array tests = {
              const size_t mem_req = Pointers::getMemReq(n);
              ASSERT((mem_req & (alignment - 1)) == 0,
                     "Total memory requirement must be a multiple of alignment");
+         }),
+    Test("AlignedPointers_Accessor_construction1",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             using Accessor = BallAccessor<alignment>;
+             const Accessor accessor = {};
+
+             ASSERT(accessor.get<"position_x">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"position_y">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"position_z">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"radius">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"color_r">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"color_g">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"color_b">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"index">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"index_distance">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+             ASSERT(accessor.get<"is_visible">() == nullptr,
+                    "Default constructed accessor should have only nullptrs");
+         }),
+    Test("AlignedPointers_Accessor_get1",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(Accessor::getMemReq(n));
+             Accessor accessor(n, data.data());
+             accessor.set<"position_x">(0, 666.666);
+
+             ASSERT(accessor.get<"position_x">()[0] == 666.666,
+                    "Values from get should be equal 1");
+             ASSERT(accessor.get<"position_x">()[0] ==
+                        accessor.get<"position_x">(0),
+                    "Values from get should be equal 2");
+             ASSERT((accessor.get<"position_x">()[0] ==
+                     accessor.get<"position_x", 0>()),
+                    "Values from get should be equal 3");
+         }),
+    Test("AlignedPointers_Accessor_get2",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(Accessor::getMemReq(n));
+             const Accessor accessor(n, data.data());
+
+             ASSERT(accessor.get<"position_x">() == accessor.get<0>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"position_y">() == accessor.get<1>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"position_z">() == accessor.get<2>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"radius">() == accessor.get<3>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"color_r">() == accessor.get<4>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"color_g">() == accessor.get<5>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"color_b">() == accessor.get<6>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"index">() == accessor.get<7>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"index_distance">() == accessor.get<8>(),
+                    "Pointers from get should be equal");
+             ASSERT(accessor.get<"is_visible">() == accessor.get<9>(),
+                    "Pointers from get should be equal");
+         }),
+    Test("AlignedPointers_Accessor_get3",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(Accessor::getMemReq(n));
+             Accessor accessor(n, data.data());
+
+             const Accessor::FullRow row(1.0, 2.0, 3.0, 4.0, 5.0f, 6.0f, 7.0f,
+                                         8u, 9, true);
+             accessor.set(666, row);
+             ASSERT(accessor.get(666) == row, "Row should be equal to set row");
+         }),
+    Test("AlignedPointers_Accessor_get4",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(Accessor::getMemReq(n));
+             Accessor accessor(n, data.data());
+
+             const Accessor::FullRow row(1.0, 2.0, 3.0, 4.0, 5.0f, 6.0f, 7.0f,
+                                         8u, 9, true);
+             accessor.set(666, row);
+             ASSERT(accessor.get<0>()[666] == row.get<"position_x">(),
+                    "Values should be equal");
+             ASSERT(accessor.get<"position_x">()[666] ==
+                        row.get<"position_x">(),
+                    "Values should be equal");
+             ASSERT(accessor.get<"position_x">(666) == row.get<"position_x">(),
+                    "Values should be equal");
+             ASSERT(
+                 (accessor.get<"position_x", 666>() == row.get<"position_x">()),
+                 "Values should be equal");
+         }),
+    Test("AlignedPointers_Accessor_get5",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(Accessor::getMemReq(n));
+             Accessor accessor(n, data.data());
+
+             const Accessor::FullRow row(1.0, 2.0, 3.0, 4.0, 5.0f, 6.0f, 7.0f,
+                                         8u, 9, true);
+             accessor.set(666, row);
+             accessor.set<"radius">(666, 666.0);
+             ASSERT(accessor.get<"radius">(666) == 666.0,
+                    "Radius should be changed");
+         }),
+    Test("AlignedPointers_Accessor_get6",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(Accessor::getMemReq(n));
+             Accessor accessor(n, data.data());
+
+             const Accessor::FullRow row(1.0, 2.0, 3.0, 4.0, 5.0f, 6.0f, 7.0f,
+                                         8u, 9, true);
+             accessor.set(666, row);
+             accessor.get<"radius">()[666] = 666.0;
+             ASSERT(accessor.get<"radius">(666) == 666.0,
+                    "Radius should be changed");
+         }),
+    Test("AlignedPointers_Accessor_size",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1189;
+             using Accessor = BallAccessor<alignment>;
+             std::vector<uint8_t> data(CBalls<alignment>::getMemReq(n));
+             const Accessor accessor(n, data.data());
+
+             ASSERT(accessor.size() == n, "Accessor size should be equal to n");
          }),
 };
 

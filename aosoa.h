@@ -391,6 +391,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
         return pointers[i];
     }
 
+    // ==== Construction related functionality ====
     [[nodiscard]] static size_t getMemReq(size_t n) {
         // Get proper begin alignment: the strictest (largest) alignment
         // requirement between all the types and MIN_ALIGN
@@ -469,14 +470,24 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
 };
 
 // ==== Accessor ====
-// - Used to access data stored in a pointers array
+// - Used to access data stored in the AlignedPointers array
 template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
-  private:
     using FullRow = Row<Variables...>;
+
+  private:
+    using Pointers = AlignedPointers<MIN_ALIGN, Variables...>;
     size_t num_elements = 0;
-    AlignedPointers<MIN_ALIGN, Variables...> pointers;
+    Pointers pointers;
 
   public:
+    [[nodiscard]] static size_t getMemReq(size_t n) {
+        return Pointers::getMemReq(n);
+    }
+
+    [[nodiscard]] consteval static size_t getAlignment() {
+        return Pointers::getAlignment();
+    }
+
     HOST DEVICE Accessor() {}
 
     Accessor(size_t n, void *ptr) : num_elements(n), pointers(n, ptr) {}
@@ -562,15 +573,14 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
 // - Used on the host to manage the accessor and the memory
 template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
-    using FullRow = Row<Variables...>;
     using ThisAccessor = Accessor<MIN_ALIGN, Variables...>;
+    using FullRow = ThisAccessor::FullRow;
 
   private:
     static_assert(Row<Variables...>::unique_names,
                   "StructureOfArrays has clashing names");
 
     using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
-    using Pointers = AlignedPointers<MIN_ALIGN, Variables...>;
 
     template <size_t MA, typename M, typename... V>
     friend struct StructureOfArrays;
@@ -582,7 +592,7 @@ struct StructureOfArrays {
 
   public:
     [[nodiscard]] static size_t getMemReq(size_t n) {
-        return Pointers::getMemReq(n);
+        return ThisAccessor::getMemReq(n);
     }
 
     StructureOfArrays(const MemOps &mem_ops, size_t n,
@@ -754,7 +764,7 @@ struct StructureOfArrays {
     }
 
     [[nodiscard]] uintptr_t getAlignedBlockSize() const {
-        return getMemReq(max_num_elements) - Pointers::getAlignment();
+        return getMemReq(max_num_elements) - ThisAccessor::getAlignment();
     }
 };
 } // namespace aosoa
