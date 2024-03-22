@@ -40,7 +40,6 @@
 // TODO:
 // - add cuda/hip/sycl memory ops
 // - add json to/from row
-// - make getAlignedBlock etc. to private
 
 namespace detail {
 // This namespace contains utility types and functions used by Row and
@@ -188,14 +187,13 @@ template <CompileTimeString Cts, typename... Variables> struct GetType {
 // - One should create similar functors for different APIs like Cuda, Hip and
 //   Sycl
 template <bool HostAccessRequiresCopy, typename Allocate, typename Free,
-          typename Copy, typename Set, typename Update>
+          typename Copy, typename Set>
 struct MemoryOperations {
     using Deallocate = Free;
     static constexpr bool host_access_requires_copy = HostAccessRequiresCopy;
     Allocate allocate = {};
     Copy memcpy = {};
     Set memset = {};
-    Update update = {};
 };
 
 struct CAllocator {
@@ -218,8 +216,7 @@ struct CMemset {
     }
 };
 
-typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset,
-                         CMemcpy>
+typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
     CMemoryOperations;
 
 } // namespace detail
@@ -565,6 +562,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
 // - Used on the host to manage the accessor and the memory
 template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
+    using FullRow = Row<Variables...>;
+    using ThisAccessor = Accessor<MIN_ALIGN, Variables...>;
+
   private:
     static_assert(Row<Variables...>::unique_names,
                   "StructureOfArrays has clashing names");
@@ -575,17 +575,16 @@ struct StructureOfArrays {
     template <size_t MA, typename M, typename... V>
     friend struct StructureOfArrays;
 
-  public:
-    using FullRow = Row<Variables...>;
-    using ThisAccessor = Accessor<MIN_ALIGN, Variables...>;
-
-  private:
     const MemOps &memory_ops;
     const size_t max_num_elements;
     std::unique_ptr<uint8_t, typename MemOps::Deallocate> memory;
     ThisAccessor local_accessor;
 
   public:
+    [[nodiscard]] static size_t getMemReq(size_t n) {
+        return Pointers::getMemReq(n);
+    }
+
     StructureOfArrays(const MemOps &mem_ops, size_t n,
                       ThisAccessor *accessor = nullptr)
         : memory_ops(mem_ops), max_num_elements(n),
@@ -615,32 +614,6 @@ struct StructureOfArrays {
                 local_accessor.set(i++, row);
             }
         }
-    }
-
-    [[nodiscard]] static size_t getMemReq(size_t n) {
-        return Pointers::getMemReq(n);
-    }
-
-    template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
-        return local_accessor.size() *
-               sizeof(typename GetType<Cts, Variables...>::Type);
-    }
-
-    [[nodiscard]] uintptr_t getAlignedBlockSize() const {
-        return getMemReq(max_num_elements) - Pointers::getAlignment();
-    }
-
-    [[nodiscard]] uintptr_t getAlignmentBytes() const {
-        // How many bytes from the beginning of the data pointer are unused due
-        // to alignment requirement
-        return static_cast<uintptr_t>(
-            static_cast<uint8_t *>(
-                static_cast<void *>(local_accessor.template get<0>())) -
-            memory.get());
-    }
-
-    [[nodiscard]] void *data() const {
-        return static_cast<void *>(memory.get());
     }
 
     void decreaseBy(size_t n, ThisAccessor *accessor = nullptr) {
@@ -726,8 +699,8 @@ struct StructureOfArrays {
                       "Mismatched types for memcpy");
         static_assert(DstName != SrcName, "DstName and SrcName are the same");
 
-        delegate(f, local_accessor.template get<DstName>(),
-                 local_accessor.template get<SrcName>(), getMemReq<DstName>());
+        f(local_accessor.template get<DstName>(),
+          local_accessor.template get<SrcName>(), getMemReq<DstName>());
     }
 
     // External to internal
@@ -742,8 +715,8 @@ struct StructureOfArrays {
         using Dst = GetType<DstName, Variables...>;
         static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        delegate(f, local_accessor.template get<DstName>(),
-                 static_cast<const void *>(src), getMemReq<DstName>());
+        f(local_accessor.template get<DstName>(),
+          static_cast<const void *>(src), getMemReq<DstName>());
     }
 
     // Internal to external
@@ -759,8 +732,8 @@ struct StructureOfArrays {
         static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
 
-        delegate(f, static_cast<void *>(dst),
-                 local_accessor.template get<SrcName>(), getMemReq<SrcName>());
+        f(static_cast<void *>(dst), local_accessor.template get<SrcName>(),
+          getMemReq<SrcName>());
     }
 
     // Memset column
@@ -770,18 +743,18 @@ struct StructureOfArrays {
 
     template <CompileTimeString DstName, typename F>
     void memset(F f, int pattern) const {
-        delegate(f, local_accessor.template get<DstName>(), pattern,
-                 getMemReq<DstName>());
+        f(local_accessor.template get<DstName>(), pattern,
+          getMemReq<DstName>());
     }
 
   private:
-    template <typename F, typename... Args>
-    auto delegate(F f, Args... args) const {
-        return f(args...);
+    template <CompileTimeString Cts> [[nodiscard]] size_t getMemReq() const {
+        return local_accessor.size() *
+               sizeof(typename GetType<Cts, Variables...>::Type);
     }
 
-    template <typename F, typename... Args> auto delegate(F f, Args... args) {
-        return f(args...);
+    [[nodiscard]] uintptr_t getAlignedBlockSize() const {
+        return getMemReq(max_num_elements) - Pointers::getAlignment();
     }
 };
 } // namespace aosoa

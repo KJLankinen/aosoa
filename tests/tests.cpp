@@ -63,7 +63,7 @@ template <size_t Alignment> using Ball = CBalls<Alignment>::FullRow;
 const aosoa::CMemoryOperations memory_ops;
 
 typedef aosoa::MemoryOperations<true, aosoa::CAllocator, aosoa::CDeallocator,
-                                aosoa::CMemcpy, aosoa::CMemset, aosoa::CMemcpy>
+                                aosoa::CMemcpy, aosoa::CMemset>
     DummyDeviceMemoryOps;
 
 template <size_t Alignment, CompileTimeString Cts>
@@ -561,70 +561,6 @@ constexpr static std::array tests = {
                         "Ball at index " + std::to_string(i) +
                             " contains incorrect data");
              }
-         }),
-    Test("StructureOfArrays_getMemReqRow1",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 128;
-             typedef Ball<alignment> Ball;
-             typedef CBalls<alignment> Balls;
-
-             std::vector<Ball> init(n);
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, init, &accessor);
-
-             ASSERT(balls.getMemReq<"radius">() == sizeof(double) * n,
-                    "Radius memory requirement should be n * sizeof(double)");
-         }),
-    Test("StructureOfArrays_getMemReqRow2",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 128;
-             typedef Ball<alignment> Ball;
-             typedef CBalls<alignment> Balls;
-
-             std::vector<Ball> init(n);
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, init, &accessor);
-             balls.decreaseBy(28, &accessor);
-
-             ASSERT(balls.getMemReq<"radius">() == sizeof(double) * (n - 28),
-                    "Radius memory requirement should be (n - 28) * "
-                    "sizeof(double)");
-         }),
-    Test("StructureOfArrays_getAlignedBlockSize",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 128;
-             typedef CBalls<alignment> Balls;
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
-
-             ASSERT(balls.getAlignedBlockSize() ==
-                        Balls::getMemReq(n) - alignment,
-                    "Aligned block size should be equal to total memory "
-                    "requirement minus alignment");
-         }),
-    Test("StructureOfArrays_alignmentBytes",
-         [](Result &result) {
-             constexpr size_t alignment = 2048;
-             typedef Ball<alignment> Ball;
-             typedef CBalls<alignment> Balls;
-
-             std::vector<Ball> init{
-                 Ball(666.666, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false),
-                 Ball(0.0, 0.0, 0.0, 0.0, 1.0f, 0.5f, 0.7f, 12u, -5, false)};
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, init, &accessor);
-             uint8_t *ptr = static_cast<uint8_t *>(balls.data());
-             ptr += balls.getAlignmentBytes();
-             const double first =
-                 *static_cast<double *>(static_cast<void *>(ptr));
-
-             // printf("%lu\n", balls.getAlignmentBytes());
-             ASSERT(first == 666.666, "Incorrect value read from first array");
          }),
     Test("StructureOfArrays_decreaseBy1",
          [](Result &result) {
