@@ -477,9 +477,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
     AlignedPointers<MIN_ALIGN, Variables...> pointers;
 
   public:
-    DEVICE Accessor() {}
+    HOST DEVICE Accessor() {}
 
-    HOST Accessor(size_t n, void *ptr) : num_elements(n), pointers(n, ptr) {}
+    Accessor(size_t n, void *ptr) : num_elements(n), pointers(n, ptr) {}
 
     template <CompileTimeString Cts>
     HOST DEVICE [[nodiscard]] auto get() const {

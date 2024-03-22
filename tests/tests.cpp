@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <tabulate/table.hpp>
 #include <vector>
 
@@ -35,9 +36,8 @@ typedef Row<Variable<float, "head">> RowSingle;
 typedef Row<Variable<float, "head">, Variable<int32_t, "tail">> RowDouble;
 
 template <size_t Alignment>
-using MemReqSoa =
-    StructureOfArrays<Alignment, aosoa::CMemoryOperations,
-                      Variable<double, "first">, Variable<float, "second">>;
+using Pointers = AlignedPointers<Alignment, Variable<float, "head">,
+                                 Variable<double, "tail">>;
 
 // clang-format off
 template <size_t Alignment, typename MemOps>
@@ -56,14 +56,12 @@ using Balls = StructureOfArrays<
             Variable<bool, "is_visible">>;
 // clang-format on
 
-template <size_t Alignment>
-using CBalls = Balls<Alignment, aosoa::CMemoryOperations>;
+template <size_t Alignment> using CBalls = Balls<Alignment, CMemoryOperations>;
 
 template <size_t Alignment> using Ball = CBalls<Alignment>::FullRow;
-const aosoa::CMemoryOperations memory_ops;
+const CMemoryOperations memory_ops;
 
-typedef aosoa::MemoryOperations<true, aosoa::CAllocator, aosoa::CDeallocator,
-                                aosoa::CMemcpy, aosoa::CMemset>
+typedef MemoryOperations<true, CAllocator, CDeallocator, CMemcpy, CMemset>
     DummyDeviceMemoryOps;
 
 template <size_t Alignment, CompileTimeString Cts>
@@ -92,28 +90,14 @@ void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
     }
 }
 
-template <size_t S, CompileTimeString Cts>
-void assertAligned(typename CBalls<S>::ThisAccessor &balls, Result &result,
-                   size_t alignment) {
+template <size_t A> void assertAligned(Pointers<A> &pointers, Result &result) {
     constexpr size_t max_size_t = ~0ul;
     size_t space = max_size_t;
-    void *ptr = balls.template get<Cts>();
-    std::align(alignment, 1, ptr, space);
-    ASSERT(space == max_size_t, ("Incorrect alignment for " + Cts).str);
-}
-
-template <size_t S, CompileTimeString Cts, CompileTimeString Head,
-          CompileTimeString... Tail>
-void assertAligned(typename CBalls<S>::ThisAccessor &balls, Result &result,
-                   size_t alignment) {
-    assertAligned<S, Cts>(balls, result, alignment);
-    if (result.success) {
-        assertAligned<S, Head>(balls, result, alignment);
-        if constexpr (sizeof...(Tail) > 0) {
-            if (result.success) {
-                assertAligned<S, Tail...>(balls, result, alignment);
-            }
-        }
+    for (size_t i = 0; i < pointers.size; i++) {
+        void *ptr = pointers[i];
+        std::align(Pointers<A>::getAlignment(), 1, ptr, space);
+        ASSERT(space == max_size_t,
+               std::string("Incorrect alignment for ") + std::to_string(i));
     }
 }
 
@@ -232,148 +216,6 @@ constexpr static std::array tests = {
          [](Result &) {
              // Row<Variable<float, "head">, Variable<int32_t, "head">>
              // fail_static_assert;
-         }),
-    Test("StructureOfArrays_getMemReq1",
-         [](Result &result) {
-             constexpr size_t alignment = 1;
-             constexpr size_t n = 1;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq2",
-         [](Result &result) {
-             constexpr size_t alignment = 2;
-             constexpr size_t n = 1;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq3",
-         [](Result &result) {
-             constexpr size_t alignment = 4;
-             constexpr size_t n = 1;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq4",
-         [](Result &result) {
-             constexpr size_t alignment = 8;
-             constexpr size_t n = 1;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq5",
-         [](Result &result) {
-             constexpr size_t alignment = 16;
-             constexpr size_t n = 1;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq6",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 1;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq7",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 1024;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == n * (sizeof(double) + sizeof(float)) + alignment,
-                    "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq8",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 1000;
-             const size_t mem_req = MemReqSoa<alignment>::getMemReq(n);
-             ASSERT(mem_req == 8064 + 4096 + alignment,
-                    "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq9",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 1000;
-             typedef StructureOfArrays<
-                 alignment, aosoa::CMemoryOperations, Variable<double, "first">,
-                 Variable<float, "second">, Variable<int, "third">,
-                 Variable<bool, "fourth">, Variable<float, "fifth">>
-                 Soa;
-             const size_t mem_req = Soa::getMemReq(n);
-             ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
-                    "Memory requirement mismatch");
-         }),
-    Test("StructureOfArrays_getMemReq10",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 3216547;
-             typedef StructureOfArrays<
-                 alignment, aosoa::CMemoryOperations, Variable<double, "first">,
-                 Variable<char, "second">, Variable<int, "third">,
-                 Variable<bool, "fourth">, Variable<float, "fifth">>
-                 Soa;
-             const size_t mem_req = Soa::getMemReq(n);
-             ASSERT((mem_req & (alignment - 1)) == 0,
-                    "Total memory requirement must be a multiple of alignment");
-         }),
-    Test("StructureOfArrays_getMemReq11",
-         [](Result &result) {
-             constexpr size_t alignment = 32;
-             constexpr size_t n = 3216547;
-             typedef StructureOfArrays<
-                 alignment, aosoa::CMemoryOperations, Variable<double, "first">,
-                 Variable<char, "second">, Variable<int, "third">,
-                 Variable<bool, "fourth">, Variable<float, "fifth">>
-                 Soa;
-             const size_t mem_req = Soa::getMemReq(n);
-             ASSERT((mem_req & (alignment - 1)) == 0,
-                    "Total memory requirement must be a multiple of alignment");
-         }),
-    Test("StructureOfArrays_getMemReq_BigType",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 100;
-
-             typedef StructureOfArrays<
-                 alignment, aosoa::CMemoryOperations, Variable<double, "1">,
-                 Variable<double, "2">, Variable<double, "3">,
-                 Variable<double, "4">, Variable<double, "5">,
-                 Variable<double, "6">, Variable<double, "7">,
-                 Variable<double, "8">, Variable<double, "9">,
-                 Variable<double, "10">, Variable<double, "11">,
-                 Variable<float, "12">, Variable<float, "13">,
-                 Variable<float, "14">, Variable<float, "15">,
-                 Variable<float, "16">, Variable<float, "17">,
-                 Variable<float, "18">, Variable<float, "19">,
-                 Variable<float, "20">, Variable<float, "21">,
-                 Variable<float, "22">, Variable<float, "23">,
-                 Variable<float, "24">, Variable<int, "25">,
-                 Variable<int, "26">, Variable<int, "27">, Variable<int, "28">,
-                 Variable<int, "29">, Variable<int, "30">, Variable<int, "31">,
-                 Variable<int, "32">, Variable<int, "33">, Variable<int, "34">,
-                 Variable<int, "35">, Variable<int, "36">, Variable<int, "37">,
-                 Variable<int, "38">, Variable<int, "39">, Variable<int, "40">,
-                 Variable<int, "41">, Variable<int, "42">, Variable<int, "43">,
-                 Variable<int, "44">, Variable<int, "45">, Variable<int, "46">,
-                 Variable<int, "47">, Variable<int, "48">, Variable<int, "49">,
-                 Variable<int, "50">, Variable<bool, "51">,
-                 Variable<bool, "52">, Variable<bool, "53">,
-                 Variable<bool, "54">, Variable<bool, "55">,
-                 Variable<bool, "56">, Variable<bool, "57">,
-                 Variable<bool, "58">, Variable<bool, "59">,
-                 Variable<bool, "60">, Variable<bool, "61">,
-                 Variable<bool, "62">, Variable<bool, "63">,
-                 Variable<char, "64">, Variable<char, "65">,
-                 Variable<char, "66">, Variable<char, "67">,
-                 Variable<char, "68">, Variable<char, "69">,
-                 Variable<char, "70">, Variable<char, "71">,
-                 Variable<char, "72">, Variable<char, "73">>
-                 BigType;
-
-             const size_t mem_req = BigType::getMemReq(n);
-             ASSERT((mem_req & (alignment - 1)) == 0,
-                    "Total memory requirement must be a multiple of alignment");
          }),
     Test("StructureOfArrays_construction1",
          [](Result &result) {
@@ -582,7 +424,7 @@ constexpr static std::array tests = {
              typedef CBalls<alignment> Balls;
 
              Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
+             Balls balls(memory_ops, n);
              balls.decreaseBy(6, &accessor);
 
              ASSERT(accessor.size() == 660,
@@ -595,7 +437,7 @@ constexpr static std::array tests = {
              typedef CBalls<alignment> Balls;
 
              Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
+             Balls balls(memory_ops, n);
              balls.decreaseBy(6);
              balls.updateAccessor(&accessor);
 
@@ -609,12 +451,24 @@ constexpr static std::array tests = {
              typedef CBalls<alignment> Balls;
 
              Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
+             Balls balls(memory_ops, n);
              balls.decreaseBy(3);
              balls.decreaseBy(3, &accessor);
 
              ASSERT(accessor.size() == 660,
                     "Updated accessor should have updated size");
+         }),
+    Test("StructureOfArrays_decreaseBy5",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 666;
+             typedef CBalls<alignment> Balls;
+
+             Balls balls(memory_ops, n);
+             balls.decreaseBy(6);
+
+             ASSERT(balls.getAccess().size() == 660,
+                    "Updated accessor should have reduced size");
          }),
     Test("StructureOfArrays_swap1",
          [](Result &result) {
@@ -1202,76 +1056,6 @@ constexpr static std::array tests = {
                                     "is_visible">(init, accessor, result);
              ASSERT(result.success, result.msg);
          }),
-    Test("StructureOfArrays_aligned_pointers1",
-         [](Result &result) {
-             constexpr size_t alignment = 1;
-             constexpr size_t n = 1000;
-             typedef CBalls<alignment> Balls;
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
-             assertAligned<alignment, "position_x", "position_y", "position_z",
-                           "radius", "color_r", "color_g", "color_b", "index",
-                           "index_distance", "is_visible">(accessor, result,
-                                                           sizeof(double));
-             ASSERT(result.success, result.msg);
-         }),
-    Test("StructureOfArrays_aligned_pointers2",
-         [](Result &result) {
-             constexpr size_t alignment = 2;
-             constexpr size_t n = 1000;
-             typedef CBalls<alignment> Balls;
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
-             assertAligned<alignment, "position_x", "position_y", "position_z",
-                           "radius", "color_r", "color_g", "color_b", "index",
-                           "index_distance", "is_visible">(accessor, result,
-                                                           sizeof(double));
-             ASSERT(result.success, result.msg);
-         }),
-    Test("StructureOfArrays_aligned_pointers3",
-         [](Result &result) {
-             constexpr size_t alignment = 4;
-             constexpr size_t n = 1000;
-             typedef CBalls<alignment> Balls;
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
-             assertAligned<alignment, "position_x", "position_y", "position_z",
-                           "radius", "color_r", "color_g", "color_b", "index",
-                           "index_distance", "is_visible">(accessor, result,
-                                                           sizeof(double));
-             ASSERT(result.success, result.msg);
-         }),
-    Test("StructureOfArrays_aligned_pointers4",
-         [](Result &result) {
-             constexpr size_t alignment = 8;
-             constexpr size_t n = 1000;
-             typedef CBalls<alignment> Balls;
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
-             assertAligned<alignment, "position_x", "position_y", "position_z",
-                           "radius", "color_r", "color_g", "color_b", "index",
-                           "index_distance", "is_visible">(accessor, result,
-                                                           alignment);
-             ASSERT(result.success, result.msg);
-         }),
-    Test("StructureOfArrays_aligned_pointers5",
-         [](Result &result) {
-             constexpr size_t alignment = 128;
-             constexpr size_t n = 1000;
-             typedef CBalls<alignment> Balls;
-
-             Balls::ThisAccessor accessor;
-             Balls balls(memory_ops, n, &accessor);
-             assertAligned<alignment, "position_x", "position_y", "position_z",
-                           "radius", "color_r", "color_g", "color_b", "index",
-                           "index_distance", "is_visible">(accessor, result,
-                                                           alignment);
-             ASSERT(result.success, result.msg);
-         }),
     Test("NthType",
          [](Result &) {
              static_assert(
@@ -1360,6 +1144,203 @@ constexpr static std::array tests = {
              } catch (const std::exception &e) {
                  ASSERT(false, std::string("Unhandled exception: ") + e.what());
              }
+         }),
+    Test("AlignedPointers_construct1",
+         [](Result &result) {
+             constexpr size_t alignment = 256;
+             using Pointers = Pointers<alignment>;
+             static_assert(Pointers::size == 2,
+                           "Expecting Pointers type to have two variables");
+
+             const Pointers pointers = {};
+             ASSERT(pointers[0] == nullptr,
+                    "Default constructed pointers array "
+                    "should contain only nullptrs");
+             ASSERT(pointers[1] == nullptr,
+                    "Default constructed pointers array "
+                    "should contain only nullptrs");
+         }),
+    Test("AlignedPointers_construct2",
+         [](Result &result) {
+             constexpr size_t alignment = 256;
+             using Pointers = Pointers<alignment>;
+             static_assert(Pointers::getAlignment() == alignment,
+                           "Alignment should be 256");
+
+             constexpr size_t n = 100;
+             const size_t bytes = Pointers::getMemReq(n);
+             std::vector<uint8_t> data(bytes);
+
+             Pointers pointers(n, data.data());
+             printf("%lu, %lu\n", reinterpret_cast<uintptr_t>(pointers[0]),
+                    reinterpret_cast<uintptr_t>(pointers[1]));
+             assertAligned(pointers, result);
+             ASSERT(result.success, result.msg);
+         }),
+    Test("AlignedPointers_alignment",
+         [](Result &) {
+             static_assert(Pointers<256>::getAlignment() == 256,
+                           "Incorrect alignment");
+             static_assert(Pointers<128>::getAlignment() == 128,
+                           "Incorrect alignment");
+             static_assert(Pointers<64>::getAlignment() == 64,
+                           "Incorrect alignment");
+             static_assert(Pointers<32>::getAlignment() == 32,
+                           "Incorrect alignment");
+             static_assert(Pointers<16>::getAlignment() == 16,
+                           "Incorrect alignment");
+             static_assert(Pointers<8>::getAlignment() == 8,
+                           "Incorrect alignment");
+             static_assert(Pointers<4>::getAlignment() == 8,
+                           "Incorrect alignment");
+             static_assert(Pointers<2>::getAlignment() == 8,
+                           "Incorrect alignment");
+             static_assert(Pointers<1>::getAlignment() == 8,
+                           "Incorrect alignment");
+         }),
+    Test("AlignedPointers_getMemReq1",
+         [](Result &result) {
+             constexpr size_t alignment = 1;
+             constexpr size_t n = 1;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq2",
+         [](Result &result) {
+             constexpr size_t alignment = 2;
+             constexpr size_t n = 1;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq3",
+         [](Result &result) {
+             constexpr size_t alignment = 4;
+             constexpr size_t n = 1;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 3 * 8, "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq4",
+         [](Result &result) {
+             constexpr size_t alignment = 8;
+             constexpr size_t n = 1;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq5",
+         [](Result &result) {
+             constexpr size_t alignment = 16;
+             constexpr size_t n = 1;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq6",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 3 * alignment, "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq7",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1024;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == n * (sizeof(double) + sizeof(float)) + alignment,
+                    "Memory requirement mismatch");
+         }),
+    Test("AlignedPointers_getMemReq8",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 1000;
+             const size_t mem_req = Pointers<alignment>::getMemReq(n);
+             ASSERT(mem_req == 8064 + 4096 + alignment,
+                    "Memory requirement mismatch");
+         }),
+    Test(
+        "AlignedPointers_getMemReq9",
+        [](Result &result) {
+            constexpr size_t alignment = 128;
+            constexpr size_t n = 1000;
+            typedef AlignedPointers<
+                alignment, Variable<double, "first">, Variable<float, "second">,
+                Variable<int, "third">, Variable<bool, "fourth">,
+                Variable<float, "fifth">>
+                Pointers;
+            const size_t mem_req = Pointers::getMemReq(n);
+            ASSERT(mem_req == 8064 + 4096 + 4096 + 1024 + 4096 + alignment,
+                   "Memory requirement mismatch");
+        }),
+    Test(
+        "AlignedPointers_getMemReq10",
+        [](Result &result) {
+            constexpr size_t alignment = 128;
+            constexpr size_t n = 3216547;
+            typedef AlignedPointers<
+                alignment, Variable<double, "first">, Variable<char, "second">,
+                Variable<int, "third">, Variable<bool, "fourth">,
+                Variable<float, "fifth">>
+                Pointers;
+            const size_t mem_req = Pointers::getMemReq(n);
+            ASSERT((mem_req & (alignment - 1)) == 0,
+                   "Total memory requirement must be a multiple of alignment");
+        }),
+    Test(
+        "AlignedPointers_getMemReq11",
+        [](Result &result) {
+            constexpr size_t alignment = 32;
+            constexpr size_t n = 3216547;
+            typedef AlignedPointers<
+                alignment, Variable<double, "first">, Variable<char, "second">,
+                Variable<int, "third">, Variable<bool, "fourth">,
+                Variable<float, "fifth">>
+                Pointers;
+            const size_t mem_req = Pointers::getMemReq(n);
+            ASSERT((mem_req & (alignment - 1)) == 0,
+                   "Total memory requirement must be a multiple of alignment");
+        }),
+    Test("AlignedPointers_getMemReq_BigType",
+         [](Result &result) {
+             constexpr size_t alignment = 128;
+             constexpr size_t n = 100;
+
+             typedef AlignedPointers<
+                 alignment, Variable<double, "1">, Variable<double, "2">,
+                 Variable<double, "3">, Variable<double, "4">,
+                 Variable<double, "5">, Variable<double, "6">,
+                 Variable<double, "7">, Variable<double, "8">,
+                 Variable<double, "9">, Variable<double, "10">,
+                 Variable<double, "11">, Variable<float, "12">,
+                 Variable<float, "13">, Variable<float, "14">,
+                 Variable<float, "15">, Variable<float, "16">,
+                 Variable<float, "17">, Variable<float, "18">,
+                 Variable<float, "19">, Variable<float, "20">,
+                 Variable<float, "21">, Variable<float, "22">,
+                 Variable<float, "23">, Variable<float, "24">,
+                 Variable<int, "25">, Variable<int, "26">, Variable<int, "27">,
+                 Variable<int, "28">, Variable<int, "29">, Variable<int, "30">,
+                 Variable<int, "31">, Variable<int, "32">, Variable<int, "33">,
+                 Variable<int, "34">, Variable<int, "35">, Variable<int, "36">,
+                 Variable<int, "37">, Variable<int, "38">, Variable<int, "39">,
+                 Variable<int, "40">, Variable<int, "41">, Variable<int, "42">,
+                 Variable<int, "43">, Variable<int, "44">, Variable<int, "45">,
+                 Variable<int, "46">, Variable<int, "47">, Variable<int, "48">,
+                 Variable<int, "49">, Variable<int, "50">, Variable<bool, "51">,
+                 Variable<bool, "52">, Variable<bool, "53">,
+                 Variable<bool, "54">, Variable<bool, "55">,
+                 Variable<bool, "56">, Variable<bool, "57">,
+                 Variable<bool, "58">, Variable<bool, "59">,
+                 Variable<bool, "60">, Variable<bool, "61">,
+                 Variable<bool, "62">, Variable<bool, "63">,
+                 Variable<char, "64">, Variable<char, "65">,
+                 Variable<char, "66">, Variable<char, "67">,
+                 Variable<char, "68">, Variable<char, "69">,
+                 Variable<char, "70">, Variable<char, "71">,
+                 Variable<char, "72">, Variable<char, "73">>
+                 Pointers;
+
+             const size_t mem_req = Pointers::getMemReq(n);
+             ASSERT((mem_req & (alignment - 1)) == 0,
+                    "Total memory requirement must be a multiple of alignment");
          }),
 };
 
