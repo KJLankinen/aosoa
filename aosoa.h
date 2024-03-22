@@ -39,7 +39,6 @@
 
 // TODO:
 // - add cuda/hip/sycl memory ops
-// - add json to/from row
 
 namespace detail {
 // This namespace contains utility types and functions used by Row and
