@@ -872,7 +872,7 @@ constexpr static std::array tests = {
              Balls::ThisAccessor accessor;
              Balls balls(memory_ops, n, &accessor);
              balls.decreaseBy(6);
-             balls.updateAccessor(&accessor, std::memcpy);
+             balls.updateAccessor(std::memcpy, &accessor);
 
              ASSERT(accessor.size() == 660,
                     "Updated accessor should have updated size");

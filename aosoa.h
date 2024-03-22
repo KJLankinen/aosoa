@@ -37,6 +37,11 @@
 #define DEVICE
 #endif
 
+// TODO:
+// - add cuda/hip/sycl memory ops
+// - add json to/from row
+// - make getAlignedBlock etc. to private
+
 namespace detail {
 // This namespace contains utility types and functions used by Row and
 // StructureOfArrays
@@ -665,20 +670,15 @@ struct StructureOfArrays {
         updateAccessor(accessor);
     }
 
-    template <typename F, typename... Args>
-    void updateAccessor(ThisAccessor *accessor, F f, Args... args) const {
-        if (accessor != nullptr) {
-            f(static_cast<void *>(accessor),
-              static_cast<const void *>(&local_accessor), sizeof(ThisAccessor),
-              args...);
-        }
+    void updateAccessor(ThisAccessor *accessor) const {
+        updateAccessor(memory_ops.memcpy, accessor);
     }
 
-    void updateAccessor(ThisAccessor *accessor) const {
+    template <typename F>
+    void updateAccessor(F f, ThisAccessor *accessor) const {
         if (accessor != nullptr) {
-            memory_ops.update(static_cast<void *>(accessor),
-                              static_cast<const void *>(&local_accessor),
-                              sizeof(ThisAccessor));
+            f(static_cast<void *>(accessor),
+              static_cast<const void *>(&local_accessor), sizeof(ThisAccessor));
         }
     }
 
@@ -712,109 +712,76 @@ struct StructureOfArrays {
     ThisAccessor &getAccess() { return local_accessor; }
 
     // Internal to internal
-    template <CompileTimeString DstName, CompileTimeString SrcName, typename F,
-              typename... Args>
-    auto memcpy(F f, Args... args) {
-        using Dst = GetType<DstName, Variables...>;
-        using Src = GetType<SrcName, Variables...>;
-        static_assert(IsSame<typename Dst::Type, typename Src::Type>::value,
-                      "Mismatched types for memcpy");
-        static_assert(DstName != SrcName, "DstName and SrcName are the same");
-
-        return memcpy(f, local_accessor.template get<DstName>(),
-                      local_accessor.template get<SrcName>(),
-                      getMemReq<DstName>(), args...);
+    template <CompileTimeString DstName, CompileTimeString SrcName>
+    void memcpy() const {
+        memcpy<DstName, SrcName>(memory_ops.memcpy);
     }
 
     // Internal to internal
-    template <CompileTimeString DstName, CompileTimeString SrcName>
-    auto memcpy() {
+    template <CompileTimeString DstName, CompileTimeString SrcName, typename F>
+    void memcpy(F f) const {
         using Dst = GetType<DstName, Variables...>;
         using Src = GetType<SrcName, Variables...>;
         static_assert(IsSame<typename Dst::Type, typename Src::Type>::value,
                       "Mismatched types for memcpy");
         static_assert(DstName != SrcName, "DstName and SrcName are the same");
 
-        return memcpy(local_accessor.template get<DstName>(),
-                      local_accessor.template get<SrcName>(),
-                      getMemReq<DstName>());
-    }
-
-    // External to internal
-    template <CompileTimeString DstName, typename SrcType, typename F,
-              typename... Args>
-    auto memcpy(F f, const SrcType *src, Args... args) {
-        using Dst = GetType<DstName, Variables...>;
-        static_assert(IsSame<typename Dst::Type, SrcType>::value,
-                      "Mismatched types for memcpy");
-        return memcpy(f, local_accessor.template get<DstName>(),
-                      static_cast<const void *>(src), getMemReq<DstName>(),
-                      args...);
+        delegate(f, local_accessor.template get<DstName>(),
+                 local_accessor.template get<SrcName>(), getMemReq<DstName>());
     }
 
     // External to internal
     template <CompileTimeString DstName, typename SrcType>
-    auto memcpy(const SrcType *src) {
+    void memcpy(const SrcType *src) const {
+        memcpy<DstName>(memory_ops.memcpy, src);
+    }
+
+    // External to internal
+    template <CompileTimeString DstName, typename SrcType, typename F>
+    void memcpy(F f, const SrcType *src) const {
         using Dst = GetType<DstName, Variables...>;
         static_assert(IsSame<typename Dst::Type, SrcType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(local_accessor.template get<DstName>(),
-                      static_cast<const void *>(src), getMemReq<DstName>());
-    }
-
-    // Internal to external
-    template <CompileTimeString SrcName, typename DstType, typename F,
-              typename... Args>
-    auto memcpy(F f, DstType *dst, Args... args) {
-        using Src = GetType<SrcName, Variables...>;
-        static_assert(IsSame<typename Src::Type, DstType>::value,
-                      "Mismatched types for memcpy");
-        return memcpy(f, static_cast<void *>(dst),
-                      local_accessor.template get<SrcName>(),
-                      getMemReq<SrcName>(), args...);
+        delegate(f, local_accessor.template get<DstName>(),
+                 static_cast<const void *>(src), getMemReq<DstName>());
     }
 
     // Internal to external
     template <CompileTimeString SrcName, typename DstType>
-    auto memcpy(DstType *dst) {
+    void memcpy(DstType *dst) const {
+        memcpy<SrcName>(memory_ops.memcpy, dst);
+    }
+
+    // Internal to external
+    template <CompileTimeString SrcName, typename DstType, typename F>
+    void memcpy(F f, DstType *dst) const {
         using Src = GetType<SrcName, Variables...>;
         static_assert(IsSame<typename Src::Type, DstType>::value,
                       "Mismatched types for memcpy");
-        return memcpy(static_cast<void *>(dst),
-                      local_accessor.template get<SrcName>(),
-                      getMemReq<SrcName>());
+
+        delegate(f, static_cast<void *>(dst),
+                 local_accessor.template get<SrcName>(), getMemReq<SrcName>());
     }
 
-    template <CompileTimeString DstName, typename F, typename... Args>
-    auto memset(F f, int pattern, Args... args) {
-        return f(local_accessor.template get<DstName>(), pattern,
-                 getMemReq<DstName>(), args...);
+    // Memset column
+    template <CompileTimeString DstName> void memset(int pattern) const {
+        memset<DstName>(memory_ops.memset, pattern);
     }
 
-    template <CompileTimeString DstName> auto memset(int pattern) {
-        return memset(local_accessor.template get<DstName>(), pattern,
-                      getMemReq<DstName>());
+    template <CompileTimeString DstName, typename F>
+    void memset(F f, int pattern) const {
+        delegate(f, local_accessor.template get<DstName>(), pattern,
+                 getMemReq<DstName>());
     }
 
   private:
-    // TODO: f should use bind, so don't take args
     template <typename F, typename... Args>
-    auto memcpy(F f, void *dst, const void *src, size_t bytes,
-                Args... args) const {
-        return f(dst, src, bytes, args...);
+    auto delegate(F f, Args... args) const {
+        return f(args...);
     }
 
-    auto memcpy(void *dst, const void *src, size_t bytes) const {
-        return memory_ops.memcpy(dst, src, bytes);
-    }
-
-    template <typename F, typename... Args>
-    auto memset(F f, void *dst, int pattern, size_t bytes, Args... args) const {
-        return f(dst, pattern, bytes, args...);
-    }
-
-    auto memset(void *dst, int pattern, size_t bytes) const {
-        return memory_ops.memset(dst, pattern, bytes);
+    template <typename F, typename... Args> auto delegate(F f, Args... args) {
+        return f(args...);
     }
 };
 } // namespace aosoa
