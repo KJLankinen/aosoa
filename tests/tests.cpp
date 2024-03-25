@@ -1,12 +1,12 @@
-#include "../aosoa.h"
+#include "aosoa.h"
 #include "json.hpp"
+#include "tabulate/table.hpp"
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <tabulate/table.hpp>
 #include <vector>
 
 using namespace aosoa;
@@ -104,7 +104,7 @@ template <size_t A> void assertAligned(Pointers<A> &pointers, Result &result) {
     }
 }
 
-constexpr static std::array tests = {
+constexpr static std::array test_arr = {
     Test("sizeof(RowSingle)",
          [](Result &) { static_assert(sizeof(RowSingle) == sizeof(float)); }),
     Test("sizeof(RowDouble)",
@@ -1507,11 +1507,11 @@ constexpr static std::array tests = {
          }),
 };
 
-int main(int, char **) {
+int tests(int, char **) {
     tabulate::Table successful_tests;
     tabulate::Table failed_tests;
 
-    for (auto [test_name, test] : tests) {
+    for (auto [test_name, test] : test_arr) {
         Result result{};
         test(result);
         if (result.success) {
@@ -1538,11 +1538,13 @@ int main(int, char **) {
     successful_tests.column(0).format().font_color(tabulate::Color::green);
     failed_tests.column(0).format().font_color(tabulate::Color::red);
 
-    std::cout << "Successful tests: " << successful_tests.size() << "/"
-              << tests.size() << "\n"
+    std::cout << "Successful test_arr: " << successful_tests.size() << "/"
+              << test_arr.size() << "\n"
               << successful_tests << "\n"
               << std::endl;
-    std::cout << "Failed tests: " << failed_tests.size() << "/" << tests.size()
-              << "\n"
+    std::cout << "Failed tests: " << failed_tests.size() << "/"
+              << test_arr.size() << "\n"
               << failed_tests << std::endl;
+
+    return 0;
 }

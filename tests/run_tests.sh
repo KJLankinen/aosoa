@@ -20,7 +20,7 @@ g++ $base_dir/tests/tests.cpp \
     -Wsign-conversion \
     -Wconversion \
     -O2 \
-    -isystem "include/tabulate/include" \
+    -isystem "tests/include/tabulate/include" \
     -fdiagnostics-show-template-tree \
     && ./$out_bin
 
