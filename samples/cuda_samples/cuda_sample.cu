@@ -16,34 +16,23 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include "aosoa/aosoa.h"
+#include "aosoa/cuda_memory_operations.h"
 
-#include <cstdlib>
-#include <cstring>
+int main(int , char **) {
+    using namespace aosoa;
+    cudaStream_t stream = {};
+    auto result = cudaStreamCreate(&stream);
 
-#include "memory_operations.h"
+    CudaMemoryOperations<false> memory_ops{
+        CudaAllocator{}, CudaMemcpy<false>(stream), CudaMemset<false>(stream)};
 
-namespace aosoa {
-struct CAllocator {
-    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
-};
+    using Soa = StructureOfArrays<256, CudaMemoryOperations<false>,
+                                  Variable<float, "foo">, Variable<int, "bar">,
+                                  Variable<double, "baz">>;
+    Soa soa(memory_ops, 1000);
 
-struct CDeallocator {
-    void operator()(void *ptr) const noexcept { std::free(ptr); }
-};
+    result = cudaStreamDestroy(stream);
 
-struct CMemcpy {
-    void operator()(void *dst, const void *src, size_t bytes) const noexcept {
-        std::memcpy(dst, src, bytes);
-    }
-};
-
-struct CMemset {
-    void operator()(void *dst, int pattern, size_t bytes) const noexcept {
-        std::memset(dst, pattern, bytes);
-    }
-};
-
-typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
-    CMemoryOperations;
-} // namespace aosoa
+    return 0;
+}

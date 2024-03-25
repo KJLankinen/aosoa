@@ -18,7 +18,7 @@
 
 #pragma once
 
-namespace detail {
+namespace aosoa {
 // - These are used by StructureOfArrays to perform
 //   - memory allocation at construction
 //   - deallocation at unique_ptr destruction
@@ -33,4 +33,4 @@ struct MemoryOperations {
     Copy memcpy = {};
     Set memset = {};
 };
-} // namespace detail
+} // namespace aosoa

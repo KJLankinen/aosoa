@@ -23,7 +23,7 @@
 
 #include "memory_operations.h"
 
-namespace detail {
+namespace aosoa {
 struct CAllocator {
     void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
 };
@@ -46,4 +46,4 @@ struct CMemset {
 
 typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
     CMemoryOperations;
-} // namespace detail
+} // namespace aosoa

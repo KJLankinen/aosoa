@@ -5,6 +5,7 @@ set(headers
     aligned_pointers.h
     aosoa.h
     compile_time_string.h
+    cuda_memory_operations.h
     c_memory_operations.h
     definitions.h
     memory_operations.h
