@@ -7,7 +7,9 @@ set(headers
     aosoa_hip.h
     compile_time_string.h
     c_memory_operations.h
+    definitions.h
     memory_operations.h
+    row.h
     type_operations.h
     variable.h
     )

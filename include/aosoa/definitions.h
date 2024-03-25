@@ -18,32 +18,10 @@
 
 #pragma once
 
-#include <cstdlib>
-#include <cstring>
-
-#include "memory_operations.h"
-
-namespace detail {
-struct CAllocator {
-    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
-};
-
-struct CDeallocator {
-    void operator()(void *ptr) const noexcept { std::free(ptr); }
-};
-
-struct CMemcpy {
-    void operator()(void *dst, const void *src, size_t bytes) const noexcept {
-        std::memcpy(dst, src, bytes);
-    }
-};
-
-struct CMemset {
-    void operator()(void *dst, int pattern, size_t bytes) const noexcept {
-        std::memset(dst, pattern, bytes);
-    }
-};
-
-typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
-    CMemoryOperations;
-} // namespace detail
+#ifdef __NVCC__
+#define HOST __host__
+#define DEVICE __device__
+#else
+#define HOST
+#define DEVICE
+#endif

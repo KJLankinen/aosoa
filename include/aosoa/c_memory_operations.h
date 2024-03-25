@@ -46,5 +46,4 @@ struct CMemset {
 
 typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
     CMemoryOperations;
-
 } // namespace detail
