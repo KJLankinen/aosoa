@@ -6,6 +6,8 @@ set(headers
     aosoa_cuda.h
     aosoa_hip.h
     compile_time_string.h
+    type_operations.h
+    variable.h
     )
 
 set(install_dir "include/${PROJECT_NAME}")

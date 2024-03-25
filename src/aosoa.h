@@ -25,10 +25,11 @@
 #include <cstring>
 #include <memory>
 #include <ostream>
-#include <type_traits>
 #include <utility>
 
 #include "compile_time_string.h"
+#include "type_operations.h"
+#include "variable.h"
 
 #ifdef __NVCC__
 #define HOST __host__
@@ -42,46 +43,6 @@
 // - add cuda/hip/sycl memory ops
 
 namespace detail {
-// This namespace contains utility types and functions used by Row and
-// StructureOfArrays
-
-// ==== Type equality ====
-template <typename T, typename U> struct IsSame {
-    constexpr static bool value = false;
-};
-
-template <typename T> struct IsSame<T, T> {
-    constexpr static bool value = true;
-};
-
-// ==== NthType ====
-// - Get the Nth type from a parameter pack of types
-template <size_t N, typename... Types> struct NthType {
-  private:
-    template <size_t I, typename Head, typename... Tail>
-    consteval static auto ofType() {
-        if constexpr (I == N) {
-            return Head{};
-        } else {
-            return ofType<I + 1, Tail...>();
-        }
-    }
-
-  public:
-    using Type = std::invoke_result_t<decltype(ofType<0, Types...>)>;
-};
-
-// - Bind a type and a CompileTimeString together
-template <typename, CompileTimeString> struct Variable {};
-
-// - Extract the name and the type from a Variable<Type, Name>
-template <typename> struct VariableTraits;
-template <typename T, CompileTimeString Cts>
-struct VariableTraits<Variable<T, Cts>> {
-    using Type = T;
-    static constexpr CompileTimeString name = Cts;
-};
-
 // Find the index of a string
 template <CompileTimeString MatchStr> struct Find {
     // ... from a pack of strings
