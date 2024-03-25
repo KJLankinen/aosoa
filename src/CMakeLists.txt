@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.17)
 
 set(headers
     aosoa.h
+    aosoa_sycl.h
+    aosoa_cuda.h
+    aosoa_hip.h
     )
 
 set(install_dir "include/${PROJECT_NAME}")
