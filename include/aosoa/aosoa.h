@@ -162,10 +162,11 @@ struct IndexOfString {
 
 // ==== FindString ====
 // - Check if the string is in the parameter pack
-template <CompileTimeString MatchStr, CompileTimeString... Strings>
-struct FindString {
-    constexpr static bool value =
-        IndexOfString<MatchStr, Strings...>::i != IndexOfString<MatchStr>::i;
+template <CompileTimeString MatchStr> struct FindString {
+    template <CompileTimeString... Strings> struct From {
+        constexpr static bool value = IndexOfString<MatchStr, Strings...>::i !=
+                                      IndexOfString<MatchStr>::i;
+    };
 };
 
 // ==== GetType ====
@@ -382,16 +383,16 @@ struct Row<Var1, Var2, Vars...> {
     // Asserting at compile time that all the names in the template parameters
     // are unique.
     static_assert(
-        !FindString<VariableTraits<Var1>::name, VariableTraits<Var2>::name,
-                    VariableTraits<Vars>::name...>::value,
+        !FindString<VariableTraits<Var1>::name>::template From<
+            VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value,
         "Found a clashing name");
 
   public:
     // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
-        !FindString<VariableTraits<Var1>::name, VariableTraits<Var2>::name,
-                    VariableTraits<Vars>::name...>::value;
+        !FindString<VariableTraits<Var1>::name>::template From<
+            VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value;
 };
 
 template <typename... Vars>
@@ -591,20 +592,19 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
   private:
     template <typename Head, typename... Tail>
     [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
-        using Extracted = VariableTraits<Head>;
+        using Traits = VariableTraits<Head>;
         if constexpr (sizeof...(Tail) > 0) {
-            return Row<Head, Tail...>(get<Extracted::name>(i),
-                                      toRow<Tail...>(i));
+            return Row<Head, Tail...>(get<Traits::name>(i), toRow<Tail...>(i));
         } else {
-            return Row<Head>(get<Extracted::name>(i));
+            return Row<Head>(get<Traits::name>(i));
         }
     }
 
     template <typename Head, typename... Tail>
     HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
-        using Extracted = VariableTraits<Head>;
-        set<Extracted::name, typename Extracted::Type>(
-            i, row.template get<Extracted::name>());
+        using Traits = VariableTraits<Head>;
+        set<Traits::name, typename Traits::Type>(
+            i, row.template get<Traits::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, row);
         }
@@ -612,9 +612,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
 
     template <typename Head, typename... Tail>
     HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
-        using Extracted = VariableTraits<Head>;
-        set<Extracted::name, typename Extracted::Type>(
-            i, row.template get<Extracted::name>());
+        using Traits = VariableTraits<Head>;
+        set<Traits::name, typename Traits::Type>(
+            i, row.template get<Traits::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, std::move(row));
         }

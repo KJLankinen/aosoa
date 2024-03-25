@@ -162,10 +162,11 @@ struct IndexOfString {
 
 // ==== FindString ====
 // - Check if the string is in the parameter pack
-template <CompileTimeString MatchStr, CompileTimeString... Strings>
-struct FindString {
-    constexpr static bool value =
-        IndexOfString<MatchStr, Strings...>::i != IndexOfString<MatchStr>::i;
+template <CompileTimeString MatchStr> struct FindString {
+    template <CompileTimeString... Strings> struct From {
+        constexpr static bool value = IndexOfString<MatchStr, Strings...>::i !=
+                                      IndexOfString<MatchStr>::i;
+    };
 };
 
 // ==== GetType ====
@@ -382,16 +383,16 @@ struct Row<Var1, Var2, Vars...> {
     // Asserting at compile time that all the names in the template parameters
     // are unique.
     static_assert(
-        !FindString<VariableTraits<Var1>::name, VariableTraits<Var2>::name,
-                    VariableTraits<Vars>::name...>::value,
+        !FindString<VariableTraits<Var1>::name>::template From<
+            VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value,
         "Found a clashing name");
 
   public:
     // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
-        !FindString<VariableTraits<Var1>::name, VariableTraits<Var2>::name,
-                    VariableTraits<Vars>::name...>::value;
+        !FindString<VariableTraits<Var1>::name>::template From<
+            VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value;
 };
 
 template <typename... Vars>

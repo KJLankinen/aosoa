@@ -1105,16 +1105,19 @@ constexpr static std::array test_arr = {
     Test("FindString",
          [](Result &) {
              static_assert(
-                 FindString<"foo"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::value,
+                 FindString<"foo"_cts>::template From<"foo"_cts, "bar"_cts,
+                                                      "baz"_cts>::value,
                  "foo should be found");
              static_assert(
-                 FindString<"bar"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::value,
+                 FindString<"bar"_cts>::template From<"foo"_cts, "bar"_cts,
+                                                      "baz"_cts>::value,
                  "bar should be found");
              static_assert(
-                 FindString<"baz"_cts, "foo"_cts, "bar"_cts, "baz"_cts>::value,
+                 FindString<"baz"_cts>::template From<"foo"_cts, "bar"_cts,
+                                                      "baz"_cts>::value,
                  "baz should be found");
-             static_assert(!FindString<"not_found"_cts, "foo"_cts, "bar"_cts,
-                                       "baz"_cts>::value,
+             static_assert(!FindString<"not_found"_cts>::template From<
+                               "foo"_cts, "bar"_cts, "baz"_cts>::value,
                            "not_found should not be found");
          }),
     Test("FailAllocation_length_error",
