@@ -27,7 +27,8 @@
 #include <ostream>
 #include <type_traits>
 #include <utility>
-#include <vector>
+
+#include "compile_time_string.h"
 
 #ifdef __NVCC__
 #define HOST __host__
@@ -53,76 +54,6 @@ template <typename T> struct IsSame<T, T> {
     constexpr static bool value = true;
 };
 
-// ==== Compile time string ====
-template <size_t N> struct CompileTimeString {
-    char str[N + 1] = {};
-
-    consteval CompileTimeString(const char (&s)[N + 1]) {
-        std::copy_n(s, N + 1, str);
-    }
-
-    consteval bool operator==(const CompileTimeString<N> rhs) const {
-        return std::equal(rhs.str, rhs.str + N, str);
-    }
-
-    template <size_t M>
-    consteval bool operator==(const CompileTimeString<M>) const {
-        return false;
-    }
-
-    template <size_t M>
-    consteval CompileTimeString<N + M>
-    operator+(const CompileTimeString<M> rhs) const {
-        char out_str[N + 1 + M] = {};
-        std::copy_n(str, N, out_str);
-        std::copy_n(rhs.str, M + 1, out_str + N);
-        return CompileTimeString<N + M>(out_str);
-    }
-
-    consteval char operator[](size_t i) const { return str[i]; }
-    consteval char *data() const { return str; }
-    consteval size_t size() const { return N - 1; }
-};
-
-template <size_t N, size_t M>
-consteval bool operator==(const char (&lhs)[N], CompileTimeString<M> rhs) {
-    return CompileTimeString<N - 1>(lhs) == rhs;
-}
-
-template <size_t N, size_t M>
-consteval bool operator==(CompileTimeString<N> lhs, const char (&rhs)[M]) {
-    return lhs == CompileTimeString<M - 1>(rhs);
-}
-
-template <size_t N, size_t M>
-consteval auto operator+(const char (&lhs)[N], CompileTimeString<M> rhs) {
-    return CompileTimeString<N - 1>(lhs) + rhs;
-}
-
-template <size_t N, size_t M>
-consteval auto operator+(CompileTimeString<N> lhs, const char (&rhs)[M]) {
-    return lhs + CompileTimeString<M - 1>(rhs);
-}
-
-// Deduction guide
-template <size_t N>
-CompileTimeString(const char (&)[N]) -> CompileTimeString<N - 1>;
-
-template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
-
-// ==== Variable ====
-// - Binds a type and a CompileTimeString together
-template <typename, CompileTimeString> struct Variable {};
-
-// ==== VariableTraits ====
-// - Used to extract the name and the type from a Variable<Type, Name>
-template <typename> struct VariableTraits;
-template <typename T, CompileTimeString Cts>
-struct VariableTraits<Variable<T, Cts>> {
-    using Type = T;
-    static constexpr CompileTimeString name = Cts;
-};
-
 // ==== NthType ====
 // - Get the Nth type from a parameter pack of types
 template <size_t N, typename... Types> struct NthType {
@@ -140,32 +71,50 @@ template <size_t N, typename... Types> struct NthType {
     using Type = std::invoke_result_t<decltype(ofType<0, Types...>)>;
 };
 
-// ==== IndexOfString ====
-// - Find the index of string from a parameter pack
-template <CompileTimeString MatchStr, CompileTimeString... Strings>
-struct IndexOfString {
-  private:
-    template <size_t N> consteval static size_t index() { return ~0ul; }
+// - Bind a type and a CompileTimeString together
+template <typename, CompileTimeString> struct Variable {};
 
-    template <size_t N, CompileTimeString Head, CompileTimeString... Tail>
-    consteval static size_t index() {
-        if constexpr (MatchStr == Head) {
-            return N;
-        } else {
-            return index<N + 1, Tail...>();
-        }
-    }
-
-  public:
-    constexpr static size_t i = index<0, Strings...>();
+// - Extract the name and the type from a Variable<Type, Name>
+template <typename> struct VariableTraits;
+template <typename T, CompileTimeString Cts>
+struct VariableTraits<Variable<T, Cts>> {
+    using Type = T;
+    static constexpr CompileTimeString name = Cts;
 };
 
-// ==== FindString ====
+// Find the index of a string
+template <CompileTimeString MatchStr> struct Find {
+    // ... from a pack of strings
+    template <CompileTimeString... Candidates> struct FromStrings {
+      private:
+        template <size_t N> consteval static size_t find() { return ~0ul; }
+
+        template <size_t N, CompileTimeString Head, CompileTimeString... Tail>
+        consteval static size_t find() {
+            if constexpr (MatchStr == Head) {
+                return N;
+            } else {
+                return find<N + 1, Tail...>();
+            }
+        }
+
+      public:
+        constexpr static size_t index = find<0, Candidates...>();
+    };
+
+    // ... from a pack of Variables
+    template <typename... Candidates> struct FromVariables {
+        constexpr static size_t index =
+            FromStrings<VariableTraits<Candidates>::name...>::index;
+    };
+};
+
 // - Check if the string is in the parameter pack
-template <CompileTimeString MatchStr> struct FindString {
-    template <CompileTimeString... Strings> struct From {
-        constexpr static bool value = IndexOfString<MatchStr, Strings...>::i !=
-                                      IndexOfString<MatchStr>::i;
+template <CompileTimeString MatchStr> struct Is {
+    template <CompileTimeString... Strings> struct ContainedIn {
+        constexpr static bool value =
+            Find<MatchStr>::template FromStrings<Strings...>::index !=
+            Find<MatchStr>::template FromStrings<>::index;
     };
 };
 
@@ -173,7 +122,7 @@ template <CompileTimeString MatchStr> struct FindString {
 // - Get index and type corresponding to Cts
 template <CompileTimeString Cts, typename... Variables> struct GetType {
     static constexpr size_t i =
-        IndexOfString<Cts, VariableTraits<Variables>::name...>::i;
+        Find<Cts>::template FromVariables<Variables...>::index;
     using Type =
         typename NthType<i, typename VariableTraits<Variables>::Type...>::Type;
 };
@@ -383,7 +332,7 @@ struct Row<Var1, Var2, Vars...> {
     // Asserting at compile time that all the names in the template parameters
     // are unique.
     static_assert(
-        !FindString<VariableTraits<Var1>::name>::template From<
+        !Is<VariableTraits<Var1>::name>::template ContainedIn<
             VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value,
         "Found a clashing name");
 
@@ -391,7 +340,7 @@ struct Row<Var1, Var2, Vars...> {
     // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
-        !FindString<VariableTraits<Var1>::name>::template From<
+        !Is<VariableTraits<Var1>::name>::template ContainedIn<
             VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value;
 };
 

@@ -1087,36 +1087,63 @@ constexpr static std::array test_arr = {
                               int>::value,
                  "2nd type should be int");
          }),
-    Test("IndexOfString",
+    Test("FindFromStrings",
          [](Result &) {
-             static_assert(0ul == IndexOfString<"foo"_cts, "foo"_cts, "bar"_cts,
-                                                "baz"_cts>::i,
+             static_assert(0ul == Find<"foo"_cts>::template FromStrings<
+                                      "foo"_cts, "bar"_cts, "baz"_cts>::index,
                            "Index of foo should be 0");
-             static_assert(1ul == IndexOfString<"bar"_cts, "foo"_cts, "bar"_cts,
-                                                "baz"_cts>::i,
+             static_assert(1ul == Find<"bar"_cts>::template FromStrings<
+                                      "foo"_cts, "bar"_cts, "baz"_cts>::index,
                            "Index of bar should be 1");
-             static_assert(2ul == IndexOfString<"baz"_cts, "foo"_cts, "bar"_cts,
-                                                "baz"_cts>::i,
+             static_assert(2ul == Find<"baz"_cts>::template FromStrings<
+                                      "foo"_cts, "bar"_cts, "baz"_cts>::index,
                            "Index of baz should be 2");
-             static_assert(~0ul == IndexOfString<"nope"_cts, "foo"_cts,
-                                                 "bar"_cts, "baz"_cts>::i,
+             static_assert(~0ul == Find<"nope"_cts>::template FromStrings<
+                                       "foo"_cts, "bar"_cts, "baz"_cts>::index,
                            "Index of nope should be ~0ul");
          }),
-    Test("FindString",
+    Test("FindFromVariables",
          [](Result &) {
              static_assert(
-                 FindString<"foo"_cts>::template From<"foo"_cts, "bar"_cts,
-                                                      "baz"_cts>::value,
+                 0ul ==
+                     Find<"foo"_cts>::template FromVariables<
+                         Variable<float, "foo"_cts>, Variable<int, "bar"_cts>,
+                         Variable<bool, "baz"_cts>>::index,
+                 "Index of foo should be 0");
+             static_assert(
+                 1ul ==
+                     Find<"bar"_cts>::template FromVariables<
+                         Variable<float, "foo"_cts>, Variable<int, "bar"_cts>,
+                         Variable<bool, "baz"_cts>>::index,
+                 "Index of foo should be 0");
+             static_assert(
+                 2ul ==
+                     Find<"baz"_cts>::template FromVariables<
+                         Variable<float, "foo"_cts>, Variable<int, "bar"_cts>,
+                         Variable<bool, "baz"_cts>>::index,
+                 "Index of foo should be 0");
+             static_assert(
+                 ~0ul ==
+                     Find<"nope"_cts>::template FromVariables<
+                         Variable<float, "foo"_cts>, Variable<int, "bar"_cts>,
+                         Variable<bool, "baz"_cts>>::index,
+                 "Index of foo should be 0");
+         }),
+    Test("IsStringContainedIn",
+         [](Result &) {
+             static_assert(
+                 Is<"foo"_cts>::template ContainedIn<"foo"_cts, "bar"_cts,
+                                                     "baz"_cts>::value,
                  "foo should be found");
              static_assert(
-                 FindString<"bar"_cts>::template From<"foo"_cts, "bar"_cts,
-                                                      "baz"_cts>::value,
+                 Is<"bar"_cts>::template ContainedIn<"foo"_cts, "bar"_cts,
+                                                     "baz"_cts>::value,
                  "bar should be found");
              static_assert(
-                 FindString<"baz"_cts>::template From<"foo"_cts, "bar"_cts,
-                                                      "baz"_cts>::value,
+                 Is<"baz"_cts>::template ContainedIn<"foo"_cts, "bar"_cts,
+                                                     "baz"_cts>::value,
                  "baz should be found");
-             static_assert(!FindString<"not_found"_cts>::template From<
+             static_assert(!Is<"not_found"_cts>::template ContainedIn<
                                "foo"_cts, "bar"_cts, "baz"_cts>::value,
                            "not_found should not be found");
          }),
@@ -1301,20 +1328,19 @@ constexpr static std::array test_arr = {
             ASSERT((mem_req & (alignment - 1)) == 0,
                    "Total memory requirement must be a multiple of alignment");
         }),
-    Test(
-        "AlignedPointers_getMemReq11",
-        [](Result &result) {
-            constexpr size_t alignment = 32;
-            constexpr size_t n = 3216547;
-            typedef AlignedPointers<
-                alignment, Variable<double, "first">, Variable<char, "second">,
-                Variable<int, "third">, Variable<bool, "fourth">,
-                Variable<float, "fifth">>
-                Pointers;
-            const size_t mem_req = Pointers::getMemReq(n);
-            ASSERT((mem_req & (alignment - 1)) == 0,
-                   "Total memory requirement must be a multiple of alignment");
-        }),
+    Test("AlignedPointers_getMemReq11",
+         [](Result &result) {
+             constexpr size_t alignment = 32;
+             constexpr size_t n = 3216547;
+             typedef AlignedPointers<
+                 alignment, Variable<double, "first">, Variable<char, "second">,
+                 Variable<int, "third">, Variable<bool, "fourth">,
+                 Variable<float, "fifth">>
+                 Pointers;
+             const size_t mem_req = Pointers::getMemReq(n);
+             ASSERT((mem_req & (alignment - 1)) == 0,
+                    "Total memory requirement must be a multiple of alignment");
+         }),
     Test("AlignedPointers_getMemReq_BigType",
          [](Result &result) {
              constexpr size_t alignment = 128;
