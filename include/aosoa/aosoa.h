@@ -27,6 +27,7 @@
 #include <ostream>
 #include <utility>
 
+#include "c_memory_operations.h"
 #include "compile_time_string.h"
 #include "type_operations.h"
 #include "variable.h"
@@ -38,53 +39,6 @@
 #define HOST
 #define DEVICE
 #endif
-
-// TODO:
-// - add cuda/hip/sycl memory ops
-
-namespace detail {
-// ==== MemoryOperations ====
-// - These are used by StructureOfArrays to perform
-//     - memory allocation at construction
-//     - deallocation at unique_ptr destruction
-//     - memcpy and memset between pointers
-//     - update of the remote accessor
-// - One should create similar functors for different APIs like Cuda, Hip and
-//   Sycl
-template <bool HostAccessRequiresCopy, typename Allocate, typename Free,
-          typename Copy, typename Set>
-struct MemoryOperations {
-    using Deallocate = Free;
-    static constexpr bool host_access_requires_copy = HostAccessRequiresCopy;
-    Allocate allocate = {};
-    Copy memcpy = {};
-    Set memset = {};
-};
-
-struct CAllocator {
-    void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
-};
-
-struct CDeallocator {
-    void operator()(void *ptr) const noexcept { std::free(ptr); }
-};
-
-struct CMemcpy {
-    void operator()(void *dst, const void *src, size_t bytes) const noexcept {
-        std::memcpy(dst, src, bytes);
-    }
-};
-
-struct CMemset {
-    void operator()(void *dst, int pattern, size_t bytes) const noexcept {
-        std::memset(dst, pattern, bytes);
-    }
-};
-
-typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
-    CMemoryOperations;
-
-} // namespace detail
 
 namespace aosoa {
 using namespace detail;

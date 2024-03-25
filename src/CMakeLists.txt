@@ -6,6 +6,8 @@ set(headers
     aosoa_cuda.h
     aosoa_hip.h
     compile_time_string.h
+    c_memory_operations.h
+    memory_operations.h
     type_operations.h
     variable.h
     )
