@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
 
 set(headers
+    accessor.h
     aligned_pointers.h
     aosoa.h
     aosoa_sycl.h
