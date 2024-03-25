@@ -114,11 +114,11 @@ template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
 // - Binds a type and a CompileTimeString together
 template <typename, CompileTimeString> struct Variable {};
 
-// ==== PairTraits ====
+// ==== ExtractFrom ====
 // - Used to extract the name and the type from a Variable<Type, Name>
-template <typename> struct PairTraits;
+template <typename> struct ExtractFrom;
 template <typename T, CompileTimeString Cts>
-struct PairTraits<Variable<T, Cts>> {
+struct ExtractFrom<Variable<T, Cts>> {
     using Type = T;
     static constexpr CompileTimeString name = Cts;
 };
@@ -172,9 +172,9 @@ struct FindString {
 // - Get index and type corresponding to Cts
 template <CompileTimeString Cts, typename... Variables> struct GetType {
     static constexpr size_t i =
-        IndexOfString<Cts, PairTraits<Variables>::name...>::i;
+        IndexOfString<Cts, ExtractFrom<Variables>::name...>::i;
     using Type =
-        typename NthType<i, typename PairTraits<Variables>::Type...>::Type;
+        typename NthType<i, typename ExtractFrom<Variables>::Type...>::Type;
 };
 
 // ==== MemoryOperations ====
@@ -250,8 +250,8 @@ template <typename Var> struct Row<Var> {
     template <typename T>
     friend std::ostream &operator<<(std::ostream &, const Row<T> &);
 
-    using Type = PairTraits<Var>::Type;
-    static constexpr auto name = PairTraits<Var>::name;
+    using Type = ExtractFrom<Var>::Type;
+    static constexpr auto name = ExtractFrom<Var>::name;
 
   private:
     Type head = {};
@@ -316,8 +316,8 @@ struct Row<Var1, Var2, Vars...> {
     template <typename... Ts>
     friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
 
-    using Type = PairTraits<Var1>::Type;
-    static constexpr auto name = PairTraits<Var1>::name;
+    using Type = ExtractFrom<Var1>::Type;
+    static constexpr auto name = ExtractFrom<Var1>::name;
 
   private:
     using ThisType = Row<Var1, Var2, Vars...>;
@@ -381,16 +381,16 @@ struct Row<Var1, Var2, Vars...> {
     // ==== Uniqueness of names ====
     // Asserting at compile time that all the names in the template parameters
     // are unique.
-    static_assert(!FindString<PairTraits<Var1>::name, PairTraits<Var2>::name,
-                              PairTraits<Vars>::name...>::value,
+    static_assert(!FindString<ExtractFrom<Var1>::name, ExtractFrom<Var2>::name,
+                              ExtractFrom<Vars>::name...>::value,
                   "Found a clashing name");
 
   public:
     // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
-        !FindString<PairTraits<Var1>::name, PairTraits<Var2>::name,
-                    PairTraits<Vars>::name...>::value;
+        !FindString<ExtractFrom<Var1>::name, ExtractFrom<Var2>::name,
+                    ExtractFrom<Vars>::name...>::value;
 };
 
 template <typename... Vars>
@@ -426,7 +426,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
     HOST DEVICE AlignedPointers() {}
 
     AlignedPointers(size_t n, void *ptr) {
-        alignPointers<size, 0, typename PairTraits<Variables>::Type...>(
+        alignPointers<size, 0, typename ExtractFrom<Variables>::Type...>(
             ptr, pointers, ~0ul, n);
     }
 
@@ -444,7 +444,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
         constexpr size_t max_size = ~size_t(0);
         size_t space = max_size;
         void *pointers[size] = {};
-        alignPointers<size, 0, typename PairTraits<Variables>::Type...>(
+        alignPointers<size, 0, typename ExtractFrom<Variables>::Type...>(
             static_cast<void *>(&dummy), pointers, std::move(space), n);
 
         const size_t num_bytes = max_size - space;
@@ -465,9 +465,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
         // that is applied...
         // If it weren't for that bug, could use:
         // struct alignas(MIN_ALIGN) alignas(typename
-        // PairTraits<Variables>::Type...) Aligned {}; return alignof(Aligned);
+        // ExtractFrom<Variables>::Type...) Aligned {}; return
+        // alignof(Aligned);
         struct alignas(MIN_ALIGN) MinAligned {};
-        return maxAlign<MinAligned, typename PairTraits<Variables>::Type...>();
+        return maxAlign<MinAligned, typename ExtractFrom<Variables>::Type...>();
     }
 
   private:
@@ -545,7 +546,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
 
     template <size_t I> HOST DEVICE [[nodiscard]] auto get() const {
         using Type =
-            typename NthType<I, typename PairTraits<Variables>::Type...>::Type;
+            typename NthType<I, typename ExtractFrom<Variables>::Type...>::Type;
         return static_cast<Type *>(pointers[I]);
     }
 
@@ -587,18 +588,20 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
   private:
     template <typename Head, typename... Tail>
     [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
-        using H = PairTraits<Head>;
+        using Exctracted = ExtractFrom<Head>;
         if constexpr (sizeof...(Tail) > 0) {
-            return Row<Head, Tail...>(get<H::name>(i), toRow<Tail...>(i));
+            return Row<Head, Tail...>(get<Exctracted::name>(i),
+                                      toRow<Tail...>(i));
         } else {
-            return Row<Head>(get<H::name>(i));
+            return Row<Head>(get<Exctracted::name>(i));
         }
     }
 
     template <typename Head, typename... Tail>
     HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
-        using H = PairTraits<Head>;
-        set<H::name, typename H::Type>(i, row.template get<H::name>());
+        using Exctracted = ExtractFrom<Head>;
+        set<Exctracted::name, typename Exctracted::Type>(
+            i, row.template get<Exctracted::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, row);
         }
@@ -606,8 +609,9 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
 
     template <typename Head, typename... Tail>
     HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
-        using H = PairTraits<Head>;
-        set<H::name, typename H::Type>(i, row.template get<H::name>());
+        using Exctracted = ExtractFrom<Head>;
+        set<Exctracted::name, typename Exctracted::Type>(
+            i, row.template get<Exctracted::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, std::move(row));
         }
