@@ -4,14 +4,12 @@ set(headers
     accessor.h
     aligned_pointers.h
     aosoa.h
-    aosoa_sycl.h
-    aosoa_cuda.h
-    aosoa_hip.h
     compile_time_string.h
     c_memory_operations.h
     definitions.h
     memory_operations.h
     row.h
+    structure_of_arrays.h
     type_operations.h
     variable.h
     )
