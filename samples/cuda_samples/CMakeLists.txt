@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.17)
 
 enable_language(CUDA)
 set(cuda_archs 70;72)
+
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
@@ -12,9 +13,9 @@ target_sources(
     cuda_sample.cu
     )
 
-target_include_directories(cuda_samples INTERFACE
+target_include_directories(cuda_samples PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-  $<INSTALL_INTERFACE:${install_dir}>
+  $<INSTALL_INTERFACE:${install_dir}/${PROJECT_NAME}>
 )
 
 set_target_properties(cuda_samples PROPERTIES CUDA_ARCHITECTURES "${cuda_archs}")
