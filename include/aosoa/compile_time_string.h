@@ -20,7 +20,7 @@
 
 #include <algorithm>
 
-namespace detail {
+namespace aosoa {
 // ==== Compile time string ====
 template <size_t N> struct CompileTimeString {
     char str[N + 1] = {};
@@ -77,4 +77,4 @@ template <size_t N>
 CompileTimeString(const char (&)[N]) -> CompileTimeString<N - 1>;
 
 template <CompileTimeString Cts> constexpr auto operator""_cts() { return Cts; }
-} // namespace detail
+} // namespace aosoa

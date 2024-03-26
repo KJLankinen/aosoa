@@ -24,8 +24,6 @@
 #include "variable.h"
 
 namespace aosoa {
-using namespace detail;
-
 // - An array of void *
 // - Each pointer is aligned by the maximum alignment of all the types in
 //   Variables... and MIN_ALIGN

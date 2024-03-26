@@ -62,7 +62,7 @@ template <size_t Alignment> using Ball = CBalls<Alignment>::FullRow;
 template <size_t Alignment>
 using BallAccessor = CBalls<Alignment>::ThisAccessor;
 
-const CMemoryOperations memory_ops;
+CMemoryOperations memory_ops;
 
 typedef MemoryOperations<true, CAllocator, CDeallocator, CMemcpy, CMemset>
     DummyDeviceMemoryOps;
@@ -333,7 +333,7 @@ constexpr static std::array test_arr = {
              };
 
              // Using dummy memory ops that uses another copy
-             const DummyDeviceMemoryOps dummy_memory_ops;
+             DummyDeviceMemoryOps dummy_memory_ops;
              Balls::ThisAccessor accessor;
              Balls balls(dummy_memory_ops, init, &accessor);
 
@@ -736,7 +736,7 @@ constexpr static std::array test_arr = {
              };
 
              // Using dummy memory ops that uses another copy
-             const DummyDeviceMemoryOps dummy_memory_ops;
+             DummyDeviceMemoryOps dummy_memory_ops;
              Balls::ThisAccessor accessor;
              Balls balls(dummy_memory_ops, init, &accessor);
              const auto rows = balls.getRows();

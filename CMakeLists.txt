@@ -35,7 +35,7 @@ if(package_tests)
     enable_testing()
 endif()
 
-option(package_samples "Build samples" ON)
+option(package_samples "Build samples" OFF)
 if(package_samples)
     add_subdirectory(samples)
 endif()
