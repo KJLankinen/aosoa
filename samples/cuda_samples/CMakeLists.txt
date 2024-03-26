@@ -12,7 +12,10 @@ target_sources(
     cuda_sample.cu
     )
 
-include_directories(PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(cuda_samples INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:${install_dir}>
+)
 
 set_target_properties(cuda_samples PROPERTIES CUDA_ARCHITECTURES "${cuda_archs}")
 target_link_libraries(cuda_samples ${PROJECT_NAME})
