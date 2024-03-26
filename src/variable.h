@@ -20,7 +20,7 @@
 
 #include "compile_time_string.h"
 
-namespace detail {
+namespace aosoa {
 // - Bind a type and a CompileTimeString together
 template <typename, CompileTimeString> struct Variable {};
 
@@ -31,4 +31,4 @@ struct VariableTraits<Variable<T, Cts>> {
     using Type = T;
     static constexpr CompileTimeString name = Cts;
 };
-} // namespace detail
+} // namespace aosoa

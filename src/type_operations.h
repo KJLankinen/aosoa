@@ -23,7 +23,7 @@
 #include <cstddef>
 #include <type_traits>
 
-namespace detail {
+namespace aosoa {
 // Check if types are equal
 template <typename T, typename U> struct IsSame {
     constexpr static bool value = false;
@@ -93,4 +93,4 @@ template <CompileTimeString Cts, typename... Variables> struct GetType {
         typename NthType<i, typename VariableTraits<Variables>::Type...>::Type;
 };
 
-} // namespace detail
+} // namespace aosoa

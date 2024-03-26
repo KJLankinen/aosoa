@@ -26,13 +26,10 @@
 #include "variable.h"
 
 namespace aosoa {
-using namespace detail;
-
 // - Row represents a row from a structure of arrays layout
 // - Given a structure of arrays with N arrays, the aggregation of the ith value
 //   of each array represent the ith row of the structure of arrays and can be
 //   instantiated as a variable of type Row.
-//
 // - Row is implemented as something between a tuple and a normal struct.
 // - It's a tuple in the sense that it's a recursive type, but it's a struct in
 //   the sense that you can (only) access it's members by name, using a

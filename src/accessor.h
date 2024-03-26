@@ -26,8 +26,6 @@
 #include "variable.h"
 
 namespace aosoa {
-using namespace detail;
-
 // - Used to access data stored in the AlignedPointers array
 template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
     using FullRow = Row<Variables...>;

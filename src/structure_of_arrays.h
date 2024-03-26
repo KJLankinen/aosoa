@@ -23,12 +23,9 @@
 #include "accessor.h"
 #include "c_memory_operations.h"
 #include "compile_time_string.h"
-#include "row.h"
 #include "type_operations.h"
 
 namespace aosoa {
-using namespace detail;
-
 // - Used on the host to manage the accessor and the memory
 template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
@@ -36,7 +33,7 @@ struct StructureOfArrays {
     using FullRow = ThisAccessor::FullRow;
 
   private:
-    static_assert(Row<Variables...>::unique_names,
+    static_assert(FullRow::unique_names,
                   "StructureOfArrays has clashing names");
 
     using CSoa = StructureOfArrays<MIN_ALIGN, CMemoryOperations, Variables...>;
@@ -44,7 +41,7 @@ struct StructureOfArrays {
     template <size_t MA, typename M, typename... V>
     friend struct StructureOfArrays;
 
-    const MemOps &memory_ops;
+    MemOps &memory_ops;
     const size_t max_num_elements;
     std::unique_ptr<uint8_t, typename MemOps::Deallocate> memory;
     ThisAccessor local_accessor;
@@ -54,7 +51,7 @@ struct StructureOfArrays {
         return ThisAccessor::getMemReq(n);
     }
 
-    StructureOfArrays(const MemOps &mem_ops, size_t n,
+    StructureOfArrays(MemOps &mem_ops, size_t n,
                       ThisAccessor *accessor = nullptr)
         : memory_ops(mem_ops), max_num_elements(n),
           memory(static_cast<uint8_t *>(
@@ -67,7 +64,7 @@ struct StructureOfArrays {
 
     // If the number of elements is very large, use the above constructor and
     // initialize the values in place to avoid running out of memory
-    StructureOfArrays(const MemOps &mem_ops, const std::vector<FullRow> &rows,
+    StructureOfArrays(MemOps &mem_ops, const std::vector<FullRow> &rows,
                       ThisAccessor *accessor = nullptr)
         : StructureOfArrays(mem_ops, rows.size(), accessor) {
         if (memory_ops.host_access_requires_copy) {
