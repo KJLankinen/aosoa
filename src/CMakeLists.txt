@@ -10,7 +10,6 @@ set(headers
     definitions.h
     memory_operations.h
     row.h
-    structure_of_arrays.h
     type_operations.h
     variable.h
     )
