@@ -13,6 +13,10 @@ target_sources(
     cuda_sample.cu
     )
 
+target_compile_options(cuda_samples PRIVATE
+    --expt-relaxed-constexpr
+    )
+
 target_include_directories(cuda_samples PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${install_dir}/${PROJECT_NAME}>
