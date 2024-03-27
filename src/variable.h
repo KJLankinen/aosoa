@@ -22,13 +22,8 @@
 
 namespace aosoa {
 // - Bind a type and a CompileTimeString together
-template <typename, CompileTimeString> struct Variable {};
-
-// - Extract the name and the type from a Variable<Type, Name>
-template <typename> struct VariableTraits;
-template <typename T, CompileTimeString Cts>
-struct VariableTraits<Variable<T, Cts>> {
+template <typename T, CompileTimeString Cts> struct Variable {
     using Type = T;
-    static constexpr CompileTimeString name = Cts;
+    static constexpr auto name = Cts;
 };
 } // namespace aosoa

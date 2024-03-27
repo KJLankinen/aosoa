@@ -19,7 +19,6 @@
 #pragma once
 
 #include "compile_time_string.h"
-#include "variable.h"
 #include <cstddef>
 #include <type_traits>
 
@@ -71,8 +70,7 @@ template <CompileTimeString MatchStr> struct Find {
 
     // ... from a pack of Variables
     template <typename... Candidates> struct FromVariables {
-        constexpr static size_t index =
-            FromStrings<VariableTraits<Candidates>::name...>::index;
+        constexpr static size_t index = FromStrings<Candidates::name...>::index;
     };
 };
 
@@ -89,8 +87,7 @@ template <CompileTimeString MatchStr> struct Is {
 template <CompileTimeString Cts, typename... Variables> struct GetType {
     static constexpr size_t i =
         Find<Cts>::template FromVariables<Variables...>::index;
-    using Type =
-        typename NthType<i, typename VariableTraits<Variables>::Type...>::Type;
+    using Type = typename NthType<i, typename Variables::Type...>::Type;
 };
 
 } // namespace aosoa
