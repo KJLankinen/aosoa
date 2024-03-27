@@ -16,18 +16,19 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "aosoa/aosoa.h"
-#include "aosoa/cuda_memory_operations.h"
+#include "aosoa.h"
+#include "cuda_memory_operations.h"
+#include "variable.h"
 
 int main(int , char **) {
     using namespace aosoa;
     cudaStream_t stream = {};
     auto result = cudaStreamCreate(&stream);
 
-    CudaMemoryOperations<false> memory_ops{
-        CudaAllocator{}, CudaMemcpy<false>(stream), CudaMemset<false>(stream)};
+    CudaMemoryOperationsAsync memory_ops{
+        CudaAllocator{}, CudaMemcpyAsync(stream), CudaMemsetAsync(stream)};
 
-    using Soa = StructureOfArrays<256, CudaMemoryOperations<false>,
+    using Soa = StructureOfArrays<256, CudaMemoryOperationsAsync,
                                   Variable<float, "foo">, Variable<int, "bar">,
                                   Variable<double, "baz">>;
     Soa soa(memory_ops, 1000);
