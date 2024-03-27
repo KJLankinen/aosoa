@@ -1,4 +1,4 @@
 build/
 .cache/
-Testing/
 install/
+compile_commands.json
