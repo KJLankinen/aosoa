@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.17)
 enable_language(CUDA)
 set(cuda_archs 70;72)
 
+SET(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES 0)
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
