@@ -1,3 +1,10 @@
 CompileFlags:
-  Add: ['-isystem aosoa/include/tabulate/include',
-  ]
+  Add: ['--cuda-gpu-arch=sm_70',
+    '-std=c++20',
+    '-I',
+    'src/']
+  Remove: ['--generate-code=arch=compute_70,code=[compute_70,sm_70]',
+    '--generate-code=arch=compute_72,code=[compute_72,sm_72]',
+    '--expt-relaxed-constexpr',
+    '-forward-unknown-to-host-compiler',
+    '--options-file']
