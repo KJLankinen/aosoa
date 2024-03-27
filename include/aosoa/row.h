@@ -23,7 +23,6 @@
 #include "compile_time_string.h"
 #include "definitions.h"
 #include "type_operations.h"
-#include "variable.h"
 
 namespace aosoa {
 // - Row represents a row from a structure of arrays layout
@@ -52,8 +51,8 @@ template <typename Var> struct Row<Var> {
     template <typename T>
     friend std::ostream &operator<<(std::ostream &, const Row<T> &);
 
-    using Type = VariableTraits<Var>::Type;
-    static constexpr auto name = VariableTraits<Var>::name;
+    using Type = Var::Type;
+    static constexpr auto name = Var::name;
 
   private:
     Type head = {};
@@ -64,14 +63,14 @@ template <typename Var> struct Row<Var> {
     HOST DEVICE constexpr Row(Type t) : head(t) {}
 
     template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] constexpr const auto &get() const {
+    [[nodiscard]] HOST DEVICE constexpr const auto &get() const {
         static_assert(EqualStrings<name, Cts>::value,
                       "No member with such name");
         return head;
     }
 
     template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] constexpr auto &get() {
+    [[nodiscard]] HOST DEVICE constexpr auto &get() {
         static_assert(EqualStrings<name, Cts>::value,
                       "No member with such name");
         return head;
@@ -118,8 +117,8 @@ struct Row<Var1, Var2, Vars...> {
     template <typename... Ts>
     friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
 
-    using Type = VariableTraits<Var1>::Type;
-    static constexpr auto name = VariableTraits<Var1>::name;
+    using Type = Var1::Type;
+    static constexpr auto name = Var1::name;
 
   private:
     using ThisType = Row<Var1, Var2, Vars...>;
@@ -138,7 +137,7 @@ struct Row<Var1, Var2, Vars...> {
     HOST DEVICE constexpr Row(Type t, Args... args) : head(t), tail(args...) {}
 
     template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] constexpr const auto &get() const {
+    [[nodiscard]] HOST DEVICE constexpr const auto &get() const {
         if constexpr (Cts == name) {
             return head;
         } else {
@@ -147,7 +146,7 @@ struct Row<Var1, Var2, Vars...> {
     }
 
     template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] constexpr auto &get() {
+    [[nodiscard]] HOST DEVICE constexpr auto &get() {
         if constexpr (Cts == name) {
             return head;
         } else {
@@ -184,16 +183,14 @@ struct Row<Var1, Var2, Vars...> {
     // Asserting at compile time that all the names in the template parameters
     // are unique.
     static_assert(
-        !Is<VariableTraits<Var1>::name>::template ContainedIn<
-            VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value,
+        !Is<Var1::name>::template ContainedIn<Var2::name, Vars::name...>::value,
         "Found a clashing name");
 
   public:
     // This helps Accessor assert it's names are unique by asserting
     // that the resulting Row type has unique names
     constexpr static bool unique_names =
-        !Is<VariableTraits<Var1>::name>::template ContainedIn<
-            VariableTraits<Var2>::name, VariableTraits<Vars>::name...>::value;
+        !Is<Var1::name>::template ContainedIn<Var2::name, Vars::name...>::value;
 };
 
 template <typename... Vars>

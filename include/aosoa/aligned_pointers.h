@@ -21,7 +21,6 @@
 #include <memory>
 
 #include "definitions.h"
-#include "variable.h"
 
 namespace aosoa {
 // - An array of void *
@@ -38,8 +37,8 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
     HOST DEVICE AlignedPointers() {}
 
     AlignedPointers(size_t n, void *ptr) {
-        alignPointers<size, 0, typename VariableTraits<Variables>::Type...>(
-            ptr, pointers, ~0ul, n);
+        alignPointers<size, 0, typename Variables::Type...>(ptr, pointers, ~0ul,
+                                                            n);
     }
 
     HOST DEVICE constexpr auto &operator[](size_t i) { return pointers[i]; }
@@ -56,7 +55,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
         constexpr size_t max_size = ~size_t(0);
         size_t space = max_size;
         void *pointers[size] = {};
-        alignPointers<size, 0, typename VariableTraits<Variables>::Type...>(
+        alignPointers<size, 0, typename Variables::Type...>(
             static_cast<void *>(&dummy), pointers, std::move(space), n);
 
         const size_t num_bytes = max_size - space;
@@ -77,11 +76,10 @@ template <size_t MIN_ALIGN, typename... Variables> struct AlignedPointers {
         // that is applied...
         // If it weren't for that bug, could use:
         // struct alignas(MIN_ALIGN) alignas(typename
-        // VariableTraits<Variables>::Type...) Aligned {}; return
+        // Variables::Type...) Aligned {}; return
         // alignof(Aligned);
         struct alignas(MIN_ALIGN) MinAligned {};
-        return maxAlign<MinAligned,
-                        typename VariableTraits<Variables>::Type...>();
+        return maxAlign<MinAligned, typename Variables::Type...>();
     }
 
   private:

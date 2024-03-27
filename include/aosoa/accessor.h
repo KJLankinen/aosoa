@@ -23,7 +23,6 @@
 #include "definitions.h"
 #include "row.h"
 #include "type_operations.h"
-#include "variable.h"
 
 namespace aosoa {
 // - Used to access data stored in the AlignedPointers array
@@ -49,33 +48,31 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
     Accessor(size_t n, void *ptr) : num_elements(n), pointers(n, ptr) {}
 
     template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] auto get() const {
+    [[nodiscard]] HOST DEVICE auto get() const {
         using G = GetType<Cts, Variables...>;
         return static_cast<G::Type *>(pointers[G::i]);
     }
 
-    template <size_t I> HOST DEVICE [[nodiscard]] auto get() const {
-        using Type =
-            typename NthType<I,
-                             typename VariableTraits<Variables>::Type...>::Type;
+    template <size_t I> [[nodiscard]] HOST DEVICE auto get() const {
+        using Type = typename NthType<I, typename Variables::Type...>::Type;
         return static_cast<Type *>(pointers[I]);
     }
 
     template <CompileTimeString Cts, size_t I>
-    HOST DEVICE [[nodiscard]] auto get() const {
+    [[nodiscard]] HOST DEVICE auto get() const {
         return get<Cts>()[I];
     }
 
     template <CompileTimeString Cts>
-    HOST DEVICE [[nodiscard]] auto get(size_t i) const {
+    [[nodiscard]] HOST DEVICE auto get(size_t i) const {
         return get<Cts>()[i];
     }
 
-    HOST DEVICE [[nodiscard]] FullRow get(size_t i) const {
+    [[nodiscard]] HOST DEVICE FullRow get(size_t i) const {
         return toRow<Variables...>(i);
     }
 
-    template <CompileTimeString Cts> HOST DEVICE [[nodiscard]] void *&getRef() {
+    template <CompileTimeString Cts> [[nodiscard]] HOST DEVICE void *&getRef() {
         using G = GetType<Cts, Variables...>;
         return pointers[G::i];
     }
@@ -99,19 +96,16 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
   private:
     template <typename Head, typename... Tail>
     [[nodiscard]] HOST DEVICE auto toRow(size_t i) const {
-        using Traits = VariableTraits<Head>;
         if constexpr (sizeof...(Tail) > 0) {
-            return Row<Head, Tail...>(get<Traits::name>(i), toRow<Tail...>(i));
+            return Row<Head, Tail...>(get<Head::name>(i), toRow<Tail...>(i));
         } else {
-            return Row<Head>(get<Traits::name>(i));
+            return Row<Head>(get<Head::name>(i));
         }
     }
 
     template <typename Head, typename... Tail>
     HOST DEVICE void fromRow(size_t i, const FullRow &row) const {
-        using Traits = VariableTraits<Head>;
-        set<Traits::name, typename Traits::Type>(
-            i, row.template get<Traits::name>());
+        set<Head::name, typename Head::Type>(i, row.template get<Head::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, row);
         }
@@ -119,9 +113,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
 
     template <typename Head, typename... Tail>
     HOST DEVICE void fromRow(size_t i, FullRow &&row) const {
-        using Traits = VariableTraits<Head>;
-        set<Traits::name, typename Traits::Type>(
-            i, row.template get<Traits::name>());
+        set<Head::name, typename Head::Type>(i, row.template get<Head::name>());
         if constexpr (sizeof...(Tail) > 0) {
             fromRow<Tail...>(i, std::move(row));
         }
