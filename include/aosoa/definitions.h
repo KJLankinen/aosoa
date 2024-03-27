@@ -18,10 +18,12 @@
 
 #pragma once
 
-#ifdef __NVCC__
-#define HOST __host__
-#define DEVICE __device__
+// clang-format off
+#if defined(__NVCC__) || (defined(__clang__) && defined(__CUDA__))
+    #define HOST __host__
+    #define DEVICE __device__
 #else
-#define HOST
-#define DEVICE
+    #define HOST
+    #define DEVICE
 #endif
+// clang-format on
