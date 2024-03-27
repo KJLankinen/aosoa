@@ -67,8 +67,14 @@ template <bool synchronize> struct CudaMemset {
     }
 };
 
-template <bool synchronize>
+using CudaMemcpyAsync = CudaMemcpy<false>;
+using CudaMemsetAsync = CudaMemset<false>;
+
 using CudaMemoryOperations =
-    MemoryOperations<true, CudaAllocator, CudaDeallocator,
-                     CudaMemcpy<synchronize>, CudaMemset<synchronize>>;
+    MemoryOperations<true, CudaAllocator, CudaDeallocator, CudaMemcpy<true>,
+                     CudaMemset<true>>;
+
+using CudaMemoryOperationsAsync =
+    MemoryOperations<true, CudaAllocator, CudaDeallocator, CudaMemcpyAsync,
+                     CudaMemsetAsync>;
 } // namespace aosoa
