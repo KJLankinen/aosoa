@@ -1,6 +1,7 @@
 #include "aosoa.h"
 #include "json.hpp"
 #include "tabulate/table.hpp"
+#include "variable.h"
 #include <array>
 #include <cstdint>
 #include <cstdio>
