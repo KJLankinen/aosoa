@@ -114,8 +114,11 @@ struct Row<Var1, Var2, Vars...> {
     template <typename T, typename... Ts>
     friend void from_json(const T &, Row<Ts...> &);
 
-    template <typename... Ts>
-    friend std::ostream &operator<<(std::ostream &, const Row<Ts...> &);
+    template <typename T>
+    friend std::ostream &operator<<(std::ostream &, const Row<T> &);
+
+    template <typename T1, typename T2, typename... Ts>
+    friend std::ostream &operator<<(std::ostream &, const Row<T1, T2, Ts...> &);
 
     using Type = Var1::Type;
     static constexpr auto name = Var1::name;
@@ -193,8 +196,15 @@ struct Row<Var1, Var2, Vars...> {
         !Is<Var1::name>::template ContainedIn<Var2::name, Vars::name...>::value;
 };
 
-template <typename... Vars>
-std::ostream &operator<<(std::ostream &os, const Row<Vars...> &row) {
+template <typename Var1, typename Var2, typename... Vars>
+std::ostream &operator<<(std::ostream &os,
+                         const Row<Var1, Var2, Vars...> &row) {
+    os << "Row {\n  ";
+    return row.output(os) << "\n}";
+}
+
+template <typename Var>
+std::ostream &operator<<(std::ostream &os, const Row<Var> &row) {
     os << "Row {\n  ";
     return row.output(os) << "\n}";
 }
