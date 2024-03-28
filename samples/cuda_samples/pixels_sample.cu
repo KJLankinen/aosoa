@@ -16,30 +16,16 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "aosoa.h"
+#include "common.h"
 #include "cuda_memory_operations.h"
-#include "definitions.h"
-#include "variable.h"
-#include <iostream>
 
-using namespace aosoa;
-using ParticleSoa =
-    StructureOfArrays<256, CudaMemoryOperationsAsync, Variable<float, "x">,
-                      Variable<float, "y">, Variable<float, "z">,
-                      Variable<float, "r">>;
-using Particles = ParticleSoa::ThisAccessor;
+using PixelSoa = Soa<CudaMemoryOperationsAsync>;
+using Pixels = Acc<CudaMemoryOperationsAsync>;
 
-HOST DEVICE void setAllTo(size_t i, Particles *particles) {
-    particles->set<"x">(i, static_cast<float>(i));
-    particles->set<"y">(i, static_cast<float>(i));
-    particles->set<"z">(i, static_cast<float>(i));
-    particles->set<"r">(i, static_cast<float>(i));
-}
-
-__global__ void init(Particles *particles) {
-    for (size_t i = threadIdx.x + blockIdx.x * blockDim.x;
-         i < particles->size(); i += blockDim.x * gridDim.x) {
-        setAllTo(i, particles);
+__global__ void init(Pixels *pixels) {
+    for (size_t i = threadIdx.x + blockIdx.x * blockDim.x; i < pixels->size();
+         i += blockDim.x * gridDim.x) {
+        computeColor(i, pixels);
     }
 }
 
@@ -50,18 +36,15 @@ int main(int , char **) {
     CudaMemoryOperationsAsync memory_ops{
         CudaAllocator{}, CudaMemcpyAsync(stream), CudaMemsetAsync(stream)};
 
-    Particles *d_accessor = nullptr;
-    result = cudaMalloc(&d_accessor, sizeof(Particles));
+    Pixels *d_accessor = nullptr;
+    result = cudaMalloc(&d_accessor, sizeof(Pixels));
 
-    ParticleSoa particle_soa(memory_ops, 1000, d_accessor);
+    PixelSoa pixel_soa(memory_ops, num_pixels, d_accessor);
 
     init<<<128, 128>>>(d_accessor);
     result = cudaDeviceSynchronize();
 
-    auto rows = particle_soa.getRows();
-    for (const auto &row : rows) {
-        std::cout << row << std::endl;
-    }
+    writePixelsToFile(pixel_soa, "pixels_cu.png");
 
     result = cudaStreamDestroy(stream);
     result = cudaFree(static_cast<void *>(d_accessor));

@@ -11,7 +11,7 @@ add_executable(cuda_samples)
 target_sources(
     cuda_samples
     PRIVATE
-    cuda_sample.cu
+    pixels_sample.cu
     )
 
 target_compile_options(cuda_samples PRIVATE
@@ -19,6 +19,7 @@ target_compile_options(cuda_samples PRIVATE
     )
 
 target_include_directories(cuda_samples PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/samples>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${install_dir}/${PROJECT_NAME}>
 )
