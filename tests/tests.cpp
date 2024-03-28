@@ -2,12 +2,14 @@
 #include "json.hpp"
 #include "row.h"
 #include "variable.h"
+#include "gtest/gtest.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <string>
+#include <tuple>
 
 using namespace aosoa;
 
@@ -45,44 +47,55 @@ CMemoryOperations memory_ops;
 typedef MemoryOperations<true, CAllocator, CDeallocator, CMemcpy, CMemset>
     DummyDeviceMemoryOps;
 
-/*
 template <size_t Alignment, CompileTimeString Cts>
-void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
-                        typename CBalls<Alignment>::ThisAccessor &balls,
-                        Result &result) {
-for (size_t i = 0; i < init.size(); i++) {
-    ASSERT(balls.template get<Cts>(i) == init[i].template get<Cts>(),
-           (Cts + " incorrect").str);
-}
+std::tuple<std::string, bool>
+assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
+                       typename CBalls<Alignment>::ThisAccessor &balls) {
+    bool result = true;
+    size_t i = 0;
+    for (; i < init.size() && result; i++) {
+        result = balls.template get<Cts>(i) == init[i].template get<Cts>();
+    }
+
+    return std::make_tuple(std::string((Cts + " incorrect at index ").str) +
+                               std::to_string(i),
+                           result);
 }
 
 template <size_t Alignment, CompileTimeString Cts, CompileTimeString Head,
-      CompileTimeString... Tail>
-void assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
-                        typename CBalls<Alignment>::ThisAccessor &balls,
-                        Result &result) {
-assertUntouchedCorrect<Alignment, Cts>(init, balls, result);
-if (result.success) {
-    assertUntouchedCorrect<Alignment, Head>(init, balls, result);
-    if constexpr (sizeof...(Tail) > 0) {
-        if (result.success) {
-            assertUntouchedCorrect<Alignment, Tail...>(init, balls, result);
+          CompileTimeString... Tail>
+std::tuple<std::string, bool>
+assertUntouchedCorrect(const std::vector<Ball<Alignment>> &init,
+                       typename CBalls<Alignment>::ThisAccessor &balls) {
+    auto [str, result] = assertUntouchedCorrect<Alignment, Cts>(init, balls);
+    if (result) {
+        auto [str, result] =
+            assertUntouchedCorrect<Alignment, Head>(init, balls);
+        if constexpr (sizeof...(Tail) > 0) {
+            if (result) {
+                auto [str, result] =
+                    assertUntouchedCorrect<Alignment, Tail...>(init, balls);
+            }
         }
     }
-}
+
+    return std::make_tuple(str, result);
 }
 
-template <size_t A> void assertAligned(Pointers<A> &pointers, Result &result) {
-constexpr size_t max_size_t = ~0ul;
-size_t space = max_size_t;
-for (size_t i = 0; i < pointers.size; i++) {
-    void *ptr = pointers[i];
-    std::align(Pointers<A>::getAlignment(), 1, ptr, space);
-    ASSERT(space == max_size_t,
-           std::string("Incorrect alignment for ") + std::to_string(i));
+template <size_t A>
+std::tuple<std::string, bool> assertAligned(Pointers<A> &pointers) {
+    bool result = true;
+    size_t i = 0;
+    constexpr size_t max_size_t = ~0ul;
+    size_t space = max_size_t;
+    for (; i < pointers.size && result; i++) {
+        void *ptr = pointers[i];
+        std::align(Pointers<A>::getAlignment(), 1, ptr, space);
+        result = space == max_size_t && ptr != nullptr;
+    }
+    return std::make_tuple(
+        std::string("Incorrect alignment for ") + std::to_string(i), result);
 }
-}
-*/
 
 TEST(aosoa_test, sizeof_RowSingle) {
     static_assert(sizeof(RowSingle) == sizeof(float));
@@ -737,10 +750,11 @@ TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_internal1) {
     ASSERT_EQ(accessor.get<"position_y">(0), 0.0) << "position_y[0] incorrect";
     ASSERT_EQ(accessor.get<"position_y">(1), 9.0) << "position_y[1] incorrect";
 
-    // assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
-    //                        "color_g", "color_b", "index", "index_distance",
-    //                        "is_visible">(init, accessor, result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                               "color_g", "color_b", "index", "index_distance",
+                               "is_visible">(init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_internal2) {
@@ -761,10 +775,11 @@ TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_internal2) {
     ASSERT_EQ(accessor.get<"position_y">(0), 0.0) << "position_y[0] incorrect";
     ASSERT_EQ(accessor.get<"position_y">(1), 9.0) << "position_y[1] incorrect";
 
-    // assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
-    //                        "color_g", "color_b", "index", "index_distance",
-    //                        "is_visible">(init, accessor, result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                               "color_g", "color_b", "index", "index_distance",
+                               "is_visible">(init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memcpy_internal_compile_fail_if_enabled) {
@@ -796,10 +811,11 @@ TEST(aosoa_test, StructureOfArrays_memcpy_external_to_internal1) {
     ASSERT_EQ(accessor.get<"position_y">(0), 0.0) << "position_y[0] incorrect";
     ASSERT_EQ(accessor.get<"position_y">(1), 9.0) << "position_y[1] incorrect";
 
-    // assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
-    //                        "color_g", "color_b", "index", "index_distance",
-    //                        "is_visible">(init, accessor, result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                               "color_g", "color_b", "index", "index_distance",
+                               "is_visible">(init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memcpy_external_to_internal2) {
@@ -821,10 +837,11 @@ TEST(aosoa_test, StructureOfArrays_memcpy_external_to_internal2) {
     ASSERT_EQ(accessor.get<"position_y">(0), 0.0) << "position_y[0] incorrect";
     ASSERT_EQ(accessor.get<"position_y">(1), 9.0) << "position_y[1] incorrect";
 
-    // assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
-    //                        "color_g", "color_b", "index", "index_distance",
-    //                        "is_visible">(init, accessor, result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_z", "radius", "color_r",
+                               "color_g", "color_b", "index", "index_distance",
+                               "is_visible">(init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_external1) {
@@ -844,13 +861,12 @@ TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_external1) {
     ASSERT_EQ(dst[0], init[0].get<"position_y">()) << "dst[0] incorrect";
     ASSERT_EQ(dst[1], init[1].get<"position_y">()) << "dst[1] incorrect";
 
-    // assertUntouchedCorrect<alignment, "position_x", "position_y",
-    // "position_z",
-    //                        "radius", "color_r", "color_g", "color_b",
-    //                        "index", "index_distance", "is_visible">(init,
-    //                        accessor,
-    //                                                        result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_x", "position_y",
+                               "position_z", "radius", "color_r", "color_g",
+                               "color_b", "index", "index_distance",
+                               "is_visible">(init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_external2) {
@@ -870,13 +886,12 @@ TEST(aosoa_test, StructureOfArrays_memcpy_internal_to_external2) {
     ASSERT_EQ(dst[0], init[0].get<"position_y">()) << "dst[0] incorrect";
     ASSERT_EQ(dst[1], init[1].get<"position_y">()) << "dst[1] incorrect";
 
-    // assertUntouchedCorrect<alignment, "position_x", "position_y",
-    // "position_z",
-    //                        "radius", "color_r", "color_g", "color_b",
-    //                        "index", "index_distance", "is_visible">(init,
-    //                        accessor,
-    //                                                        result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_x", "position_y",
+                               "position_z", "radius", "color_r", "color_g",
+                               "color_b", "index", "index_distance",
+                               "is_visible">(init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memset1) {
@@ -894,12 +909,12 @@ TEST(aosoa_test, StructureOfArrays_memset1) {
     ASSERT_EQ(accessor.get<"index">(0), 0) << "index[0] set incorrectly";
     ASSERT_EQ(accessor.get<"index">(1), 0) << "index[1] set incorrectly";
 
-    // assertUntouchedCorrect<alignment, "position_x", "position_y",
-    // "position_z",
-    //                        "radius", "color_r", "color_g", "color_b",
-    //                        "index_distance", "is_visible">(init, accessor,
-    //                                                        result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_x", "position_y",
+                               "position_z", "radius", "color_r", "color_g",
+                               "color_b", "index_distance", "is_visible">(
+            init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memset2) {
@@ -917,12 +932,12 @@ TEST(aosoa_test, StructureOfArrays_memset2) {
     ASSERT_EQ(accessor.get<"index">(0), 0) << "index[0] set incorrectly";
     ASSERT_EQ(accessor.get<"index">(1), 0) << "index[1] set incorrectly";
 
-    // assertUntouchedCorrect<alignment, "position_x", "position_y",
-    // "position_z",
-    //                        "radius", "color_r", "color_g", "color_b",
-    //                        "index_distance", "is_visible">(init, accessor,
-    //                                                        result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_x", "position_y",
+                               "position_z", "radius", "color_r", "color_g",
+                               "color_b", "index_distance", "is_visible">(
+            init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memset3) {
@@ -962,12 +977,12 @@ TEST(aosoa_test, StructureOfArrays_memset3) {
     ASSERT_EQ(accessor.get<"index">(9), 7u) << "index[1] set incorrectly";
     ASSERT_EQ(accessor.get<"index">(10), 7u) << "index[1] set incorrectly";
 
-    // assertUntouchedCorrect<alignment, "position_x", "position_y",
-    // "position_z",
-    //                        "radius", "color_r", "color_g", "color_b",
-    //                        "index_distance", "is_visible">(init, accessor,
-    //                                                        result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_x", "position_y",
+                               "position_z", "radius", "color_r", "color_g",
+                               "color_b", "index_distance", "is_visible">(
+            init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, StructureOfArrays_memset4) {
@@ -1009,12 +1024,12 @@ TEST(aosoa_test, StructureOfArrays_memset4) {
     ASSERT_EQ(accessor.get<"index">(9), 7u) << "index[1] set incorrectly";
     ASSERT_EQ(accessor.get<"index">(10), 7u) << "index[1] set incorrectly";
 
-    // assertUntouchedCorrect<alignment, "position_x", "position_y",
-    // "position_z",
-    //                        "radius", "color_r", "color_g", "color_b",
-    //                        "index_distance", "is_visible">(init, accessor,
-    //                                                        result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] =
+        assertUntouchedCorrect<alignment, "position_x", "position_y",
+                               "position_z", "radius", "color_r", "color_g",
+                               "color_b", "index_distance", "is_visible">(
+            init, accessor);
+    ASSERT_TRUE(result) << str;
 }
 
 TEST(aosoa_test, NthType) {
@@ -1152,8 +1167,25 @@ TEST(aosoa_test, AlignedPointers_construct2) {
 
     Pointers pointers(n, data.data());
 
-    // assertAligned(pointers, result);
-    // ASSERT_EQ(result.success, result.msg);
+    auto [str, result] = assertAligned(pointers);
+    ASSERT_TRUE(result) << str;
+}
+
+TEST(aosoa_test, AlignedPointers_construct3) {
+    constexpr size_t alignment = 256;
+    using Pointers = Pointers<alignment>;
+    static_assert(Pointers::getAlignment() == alignment,
+                  "Alignment should be 256");
+
+    constexpr size_t n = 100;
+    const size_t bytes = Pointers::getMemReq(n);
+    std::vector<uint8_t> data(bytes);
+
+    Pointers pointers(n, data.data());
+    for (size_t i = 0; i < pointers.size; i++) {
+        ASSERT_TRUE(pointers[i] != nullptr)
+            << "Pointer " + std::to_string(i) + " is nullptr";
+    }
 }
 
 TEST(aosoa_test, AlignedPointers_alignment) {
