@@ -28,6 +28,8 @@ add_compile_options(
     "$<IF:${debug_gcc},${gcc_deb_opt},${gcc_rel_opt}>"
     )
 
+add_subdirectory(src)
+
 option(package_tests "Build tests" ON)
 if(package_tests)
     include(CTest)
@@ -39,5 +41,3 @@ option(package_samples "Build samples" OFF)
 if(package_samples)
     add_subdirectory(samples)
 endif()
-
-add_subdirectory(src)
