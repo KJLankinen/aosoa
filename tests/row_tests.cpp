@@ -10,6 +10,11 @@ using namespace aosoa;
 typedef Row<Variable<float, "head">> RowSingle;
 typedef Row<Variable<float, "head">, Variable<int32_t, "tail">> RowDouble;
 
+TEST(row_test, ShouldFailCompilationIfEnabled) {
+    // Row<Variable<float, "head">, Variable<int32_t, "head">>
+    // fail_static_assert;
+}
+
 TEST(row_test, sizeof_RowSingle) {
     static_assert(sizeof(RowSingle) == sizeof(float));
 }

@@ -4,8 +4,10 @@ set(testname ${PROJECT_NAME}_tests)
 
 add_executable(
     ${testname}
-    tests.cpp
+    aligned_pointers_tests.cpp
+    aosoa_tests.cpp
     row_tests.cpp
+    tests.cpp
 )
 
 target_include_directories(${testname} PRIVATE
