@@ -128,14 +128,14 @@ struct StructureOfArrays {
         // memory recides on device. The first copy is the raw data from device
         // to host, the second is from soa (= current) layout to aos (= vector
         // of FullRow) layout
-        if (memory_ops.host_access_requires_copy) {
+        if constexpr (MemOps::host_access_requires_copy) {
             // Create this structure backed by host memory, then call it's
             // version of this function
             CMemoryOperations c_mem_ops;
             CSoa host_soa(c_mem_ops, max_num_elements);
             memory_ops.memcpy(host_soa.local_accessor.template get<0>(),
                               local_accessor.template get<0>(),
-                              getAlignedBlockSize());
+                              getAlignedBlockSize(), true);
             host_soa.local_accessor.size() = local_accessor.size();
 
             return host_soa.getRows();

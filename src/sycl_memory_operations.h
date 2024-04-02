@@ -45,37 +45,57 @@ struct SyclDeallocator {
     void operator()(void *ptr) noexcept { sycl::free(ptr, queue); }
 };
 
-struct SyclMemcpy {
+template <bool SYNC> struct SyclMemcpy {
     sycl::queue &queue;
     sycl::event event;
 
     SyclMemcpy(sycl::queue &queue) : queue(queue) {}
 
-    void operator()(void *dst, const void *src, size_t bytes) noexcept {
+    void operator()(void *dst, const void *src, size_t bytes,
+                    bool synchronize = false) noexcept {
         event = queue.memcpy(dst, src, bytes);
+        if constexpr (SYNC) {
+            event.wait();
+        }
     }
 };
 
-struct SyclMemset {
+template <bool SYNC> struct SyclMemset {
     sycl::queue &queue;
     sycl::event event;
 
     SyclMemset(sycl::queue &queue) : queue(queue) {}
 
-    void operator()(void *ptr, int pattern, size_t bytes) noexcept {
+    void operator()(void *ptr, int pattern, size_t bytes,
+                    bool synchronize = false) noexcept {
         event = queue.memset(ptr, pattern, bytes);
+        if constexpr (SYNC) {
+            event.wait();
+        } else {
+            if (synchronize) {
+                event.wait();
+            }
+        }
     }
 };
 
-template <sycl::usm::alloc kind>
+template <sycl::usm::alloc kind, bool synchronize>
 using SyclMemoryOperations =
     MemoryOperations<kind == sycl::usm::alloc::device, SyclAllocator<kind>,
-                     SyclDeallocator, SyclMemcpy, SyclMemset>;
+                     SyclDeallocator, SyclMemcpy<synchronize>,
+                     SyclMemset<synchronize>>;
 
 using SyclDeviceMemoryOperations =
-    SyclMemoryOperations<sycl::usm::alloc::device>;
-using SyclHostMemoryOperations = SyclMemoryOperations<sycl::usm::alloc::host>;
+    SyclMemoryOperations<sycl::usm::alloc::device, true>;
+using SyclDeviceMemoryOperationsAsync =
+    SyclMemoryOperations<sycl::usm::alloc::device, false>;
+using SyclHostMemoryOperations =
+    SyclMemoryOperations<sycl::usm::alloc::host, true>;
+using SyclHostMemoryOperationsAsync =
+    SyclMemoryOperations<sycl::usm::alloc::host, false>;
 using SyclSharedMemoryOperations =
-    SyclMemoryOperations<sycl::usm::alloc::shared>;
+    SyclMemoryOperations<sycl::usm::alloc::shared, true>;
+using SyclSharedMemoryOperationsAsync =
+    SyclMemoryOperations<sycl::usm::alloc::shared, false>;
 } // namespace aosoa
 

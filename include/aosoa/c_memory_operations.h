@@ -33,13 +33,15 @@ struct CDeallocator {
 };
 
 struct CMemcpy {
-    void operator()(void *dst, const void *src, size_t bytes) const noexcept {
+    void operator()(void *dst, const void *src, size_t bytes,
+                    bool = false) const noexcept {
         std::memcpy(dst, src, bytes);
     }
 };
 
 struct CMemset {
-    void operator()(void *dst, int pattern, size_t bytes) const noexcept {
+    void operator()(void *dst, int pattern, size_t bytes,
+                    bool = false) const noexcept {
         std::memset(dst, pattern, bytes);
     }
 };

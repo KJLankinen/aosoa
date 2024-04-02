@@ -38,31 +38,41 @@ struct CudaDeallocator {
     void operator()(void *ptr) noexcept { previous_result = cudaFree(ptr); }
 };
 
-template <bool synchronize> struct CudaMemcpy {
+template <bool SYNC> struct CudaMemcpy {
     cudaError_t previous_result = {};
     cudaStream_t stream = {};
 
     CudaMemcpy(cudaStream_t stream) : stream(stream) {}
 
-    void operator()(void *dst, const void *src, size_t bytes) noexcept {
+    void operator()(void *dst, const void *src, size_t bytes,
+                    bool synchronize = false) noexcept {
         previous_result =
             cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDefault, stream);
-        if constexpr (synchronize) {
+        if constexpr (SYNC) {
             previous_result = cudaDeviceSynchronize();
+        } else {
+            if (synchronize) {
+                previous_result = cudaDeviceSynchronize();
+            }
         }
     }
 };
 
-template <bool synchronize> struct CudaMemset {
+template <bool SYNC> struct CudaMemset {
     cudaError_t previous_result = {};
     cudaStream_t stream = {};
 
     CudaMemset(cudaStream_t stream) : stream(stream) {}
 
-    void operator()(void *dst, int pattern, size_t bytes) noexcept {
+    void operator()(void *dst, int pattern, size_t bytes,
+                    bool synchronize = false) noexcept {
         previous_result = cudaMemsetAsync(dst, pattern, bytes, stream);
-        if constexpr (synchronize) {
+        if constexpr (SYNC) {
             previous_result = cudaDeviceSynchronize();
+        } else {
+            if (synchronize) {
+                previous_result = cudaDeviceSynchronize();
+            }
         }
     }
 };
