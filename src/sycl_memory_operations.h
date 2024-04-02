@@ -85,6 +85,12 @@ using SyclMemoryOperations =
                      SyclDeallocator, SyclMemcpy<synchronize>,
                      SyclMemset<synchronize>>;
 
+using SyclDeviceAllocator = SyclAllocator<sycl::usm::alloc::device>;
+using SyclHostAllocator = SyclAllocator<sycl::usm::alloc::host>;
+using SyclSharedAllocator = SyclAllocator<sycl::usm::alloc::shared>;
+using SyclMemcpyAsync = SyclMemcpy<false>;
+using SyclMemsetAsync = SyclMemset<false>;
+
 using SyclDeviceMemoryOperations =
     SyclMemoryOperations<sycl::usm::alloc::device, true>;
 using SyclDeviceMemoryOperationsAsync =
@@ -98,4 +104,3 @@ using SyclSharedMemoryOperations =
 using SyclSharedMemoryOperationsAsync =
     SyclMemoryOperations<sycl::usm::alloc::shared, false>;
 } // namespace aosoa
-

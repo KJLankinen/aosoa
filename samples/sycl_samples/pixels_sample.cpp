@@ -19,19 +19,19 @@
 #include "common.h"
 #include "sycl_memory_operations.h"
 
-using PixelSoa = Soa<SyclDeviceMemoryOperations>;
-using Pixels = Acc<SyclDeviceMemoryOperations>;
+using namespace aosoa;
 
-int deviceSelector() {}
+using PixelSoa = Soa<SyclDeviceMemoryOperationsAsync>;
+using Pixels = Acc<SyclDeviceMemoryOperationsAsync>;
 
 int main(int , char **) {
-    sycl::device d(sycl::gpu_selector_v);
+    sycl::device d(sycl::default_selector_v);
     sycl::property_list q_prop{sycl::property::queue::in_order()};
     sycl::queue queue{d, q_prop};
 
-    aosoa::SyclMemoryOperations memory_ops{
-        SyclAllocator{queue}, SyclDeallocator{queue}, SyclMemcpy{queue},
-        SyclMemset{queue}};
+    SyclDeviceMemoryOperationsAsync memory_ops{
+        SyclDeviceAllocator{queue}, SyclDeallocator{queue},
+        SyclMemcpyAsync{queue}, SyclMemsetAsync{queue}};
 
     Pixels *d_pixels = sycl::malloc_device<Pixels>(1, queue);
     PixelSoa pixel_soa(memory_ops, num_pixels, d_pixels);

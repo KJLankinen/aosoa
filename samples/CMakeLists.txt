@@ -6,3 +6,4 @@ include_directories(SYSTEM
 
 add_subdirectory(cuda_samples)
 add_subdirectory(cpu_samples)
+add_subdirectory(sycl_samples)
