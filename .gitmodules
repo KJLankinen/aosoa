@@ -1,3 +1,0 @@
-[submodule "include/tabulate"]
-	path = tests/tabulate
-	url = https://github.com/p-ranav/tabulate.git
