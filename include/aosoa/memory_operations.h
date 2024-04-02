@@ -24,12 +24,12 @@ namespace aosoa {
 //   - deallocation at unique_ptr destruction
 //   - memcpy and memset between pointers
 //   - update of the remote accessor
-template <bool HostAccessRequiresCopy, typename Allocate, typename Free,
+template <bool HostAccessRequiresCopy, typename Allocate, typename Deallocate,
           typename Copy, typename Set>
 struct MemoryOperations {
-    using Deallocate = Free;
     static constexpr bool host_access_requires_copy = HostAccessRequiresCopy;
     Allocate allocate = {};
+    Deallocate deallocate = {};
     Copy memcpy = {};
     Set memset = {};
 };

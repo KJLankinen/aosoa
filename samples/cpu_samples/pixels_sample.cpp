@@ -29,13 +29,13 @@ void init(Pixels *pixels) {
 }
 
 int main(int , char **) {
-    aosoa::CMemoryOperations memory_ops{
-        CAllocator{}, CMemcpy{}, CMemset{}};
+    aosoa::CMemoryOperations memory_ops{CAllocator{}, CDeallocator{}, CMemcpy{},
+                                        CMemset{}};
 
     Pixels pixels = {};
     PixelSoa pixel_soa(memory_ops, num_pixels, &pixels);
     init(&pixels);
-    writePixelsToFile(pixel_soa, "pixels.png");
+    writePixelsToFile(pixel_soa, "pixels_cpu.png");
 
     return 0;
 }

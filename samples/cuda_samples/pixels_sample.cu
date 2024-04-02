@@ -33,8 +33,9 @@ int main(int , char **) {
     cudaStream_t stream = {};
     [[maybe_unused]] auto result = cudaStreamCreate(&stream);
 
-    CudaMemoryOperationsAsync memory_ops{
-        CudaAllocator{}, CudaMemcpyAsync(stream), CudaMemsetAsync(stream)};
+    CudaMemoryOperationsAsync memory_ops{CudaAllocator{}, CudaDeallocator{},
+                                         CudaMemcpyAsync(stream),
+                                         CudaMemsetAsync(stream)};
 
     Pixels *d_accessor = nullptr;
     result = cudaMalloc(&d_accessor, sizeof(Pixels));

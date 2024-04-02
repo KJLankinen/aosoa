@@ -44,7 +44,7 @@ struct StructureOfArrays {
 
     MemOps &memory_ops;
     const size_t max_num_elements;
-    std::unique_ptr<uint8_t, typename MemOps::Deallocate> memory;
+    std::unique_ptr<uint8_t, decltype(MemOps::deallocate)> memory;
     ThisAccessor local_accessor;
 
   public:
@@ -56,7 +56,8 @@ struct StructureOfArrays {
                       ThisAccessor *accessor = nullptr)
         : memory_ops(mem_ops), max_num_elements(n),
           memory(static_cast<uint8_t *>(
-              memory_ops.allocate(getMemReq(max_num_elements)))),
+                     memory_ops.allocate(getMemReq(max_num_elements))),
+                 memory_ops.deallocate),
           local_accessor(max_num_elements, static_cast<void *>(memory.get())) {
         updateAccessor(accessor);
         memory_ops.memset(static_cast<void *>(memory.get()), 0,
