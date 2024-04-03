@@ -21,7 +21,7 @@
 
 using namespace aosoa;
 
-using MemOp = SyclHostMemoryOperationsAsync;
+using MemOp = SyclDeviceMemoryOperationsAsync;
 using PixelSoa = Soa<MemOp>;
 using Pixels = Acc<MemOp>;
 
@@ -39,7 +39,6 @@ int main(int , char **) {
         h.parallel_for(num_pixels,
                        [=](auto idx) { computeColor(idx, d_pixels); });
     });
-    queue.wait();
     writePixelsToFile(pixel_soa, "pixels_sycl.png");
     sycl::free(d_pixels, queue);
 

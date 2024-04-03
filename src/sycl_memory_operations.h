@@ -27,7 +27,7 @@ template <sycl::usm::alloc kind> struct SyclAllocator {
     const sycl::property_list prop_list;
 
     SyclAllocator(const sycl::queue &queue,
-                  const sycl::property_list &prop_list = {})
+                  const sycl::property_list prop_list = {})
         : queue(queue), prop_list(prop_list) {}
 
     void *operator()(size_t bytes) {
@@ -54,6 +54,10 @@ template <bool SYNC> struct SyclMemcpy {
         event = queue.memcpy(dst, src, bytes);
         if constexpr (SYNC) {
             event.wait();
+        } else {
+            if (synchronize) {
+                event.wait();
+            }
         }
     }
 };
