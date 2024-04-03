@@ -26,7 +26,7 @@
 namespace aosoa {
 template <sycl::usm::alloc kind> struct SyclAllocator {
     const sycl::queue &queue;
-    const sycl::property_list &prop_list;
+    const sycl::property_list prop_list;
 
     SyclAllocator(const sycl::queue &queue,
                   const sycl::property_list &prop_list = {})
