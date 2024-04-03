@@ -76,7 +76,7 @@ template <bool SYNC> struct CudaMemset {
 };
 
 template <bool SYNC> struct CudaMemoryOperations {
-    static constexpr bool host_access_requires_copy = SYNC;
+    static constexpr bool host_access_requires_copy = true;
     CudaAllocator allocate;
     CudaDeallocator deallocate;
     CudaMemcpy<SYNC> memcpy;
