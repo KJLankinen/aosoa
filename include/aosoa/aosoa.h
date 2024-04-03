@@ -131,6 +131,11 @@ struct StructureOfArrays {
         if constexpr (MemOps::host_access_requires_copy) {
             // Create this structure backed by host memory, then call it's
             // version of this function
+
+            static_assert(
+                !CMemoryOperations::host_access_requires_copy,
+                "C memory operations should not require copy for host access");
+
             CMemoryOperations c_mem_ops;
             CSoa host_soa(c_mem_ops, max_num_elements);
             memory_ops.memcpy(host_soa.local_accessor.template get<0>(),
