@@ -21,8 +21,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "memory_operations.h"
-
 namespace aosoa {
 struct CAllocator {
     void *operator()(size_t bytes) const noexcept { return std::malloc(bytes); }
@@ -46,6 +44,11 @@ struct CMemset {
     }
 };
 
-typedef MemoryOperations<false, CAllocator, CDeallocator, CMemcpy, CMemset>
-    CMemoryOperations;
+struct CMemoryOperations {
+    static constexpr bool host_access_requires_copy = false;
+    CAllocator allocate = {};
+    CDeallocator deallocate = {};
+    CMemcpy memcpy = {};
+    CMemset memset = {};
+};
 } // namespace aosoa

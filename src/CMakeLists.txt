@@ -8,8 +8,8 @@ set(headers
     cuda_memory_operations.h
     c_memory_operations.h
     definitions.h
-    memory_operations.h
     row.h
+    sycl_memory_operations.h
     type_operations.h
     variable.h
     )

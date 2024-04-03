@@ -5,8 +5,13 @@
 
 CMemoryOperations memory_ops;
 
-typedef MemoryOperations<true, CAllocator, CDeallocator, CMemcpy, CMemset>
-    DummyDeviceMemoryOps;
+struct DummyDeviceMemoryOps {
+    static constexpr bool host_access_requires_copy = true;
+    aosoa::CAllocator allocate = {};
+    aosoa::CDeallocator deallocate = {};
+    aosoa::CMemcpy memcpy = {};
+    aosoa::CMemset memset = {};
+};
 
 template <size_t Alignment, CompileTimeString Cts>
 std::tuple<std::string, bool>
