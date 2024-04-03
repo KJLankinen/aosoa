@@ -21,17 +21,17 @@
 
 using namespace aosoa;
 
-using PixelSoa = Soa<SyclDeviceMemoryOperationsAsync>;
-using Pixels = Acc<SyclDeviceMemoryOperationsAsync>;
+using MemOp = SyclHostMemoryOperationsAsync;
+using PixelSoa = Soa<MemOp>;
+using Pixels = Acc<MemOp>;
 
 int main(int , char **) {
     sycl::device d(sycl::default_selector_v);
     sycl::property_list q_prop{sycl::property::queue::in_order()};
     sycl::queue queue{d, q_prop};
 
-    SyclDeviceMemoryOperationsAsync memory_ops{
-        SyclDeviceAllocator{queue}, SyclDeallocator{queue},
-        SyclMemcpyAsync{queue}, SyclMemsetAsync{queue}};
+    MemOp memory_ops{SyclHostAllocator{queue}, SyclDeallocator{queue},
+                     SyclMemcpyAsync{queue}, SyclMemsetAsync{queue}};
 
     Pixels *d_pixels = sycl::malloc_device<Pixels>(1, queue);
     PixelSoa pixel_soa(memory_ops, num_pixels, d_pixels);
@@ -40,6 +40,7 @@ int main(int , char **) {
         h.parallel_for(num_pixels,
                        [=](auto idx) { computeColor(idx, d_pixels); });
     });
+    queue.wait();
     writePixelsToFile(pixel_soa, "pixels_sycl.png");
     sycl::free(d_pixels, queue);
 
