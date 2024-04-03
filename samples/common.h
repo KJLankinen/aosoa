@@ -50,7 +50,7 @@ using Soa = StructureOfArrays<
     >;
 // clang-format on
 
-template <typename M> using Acc = Soa<M>::ThisAccessor;
+template <typename M> using Acc = typename Soa<M>::ThisAccessor;
 
 template <typename A>
 HOST DEVICE void computeColor(size_t linear_index, A *accessor) {
