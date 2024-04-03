@@ -1,0 +1,3 @@
+CompileFlags:
+  Remove: ['--offload-arch']
+  Add: ['--offload-arch=gfx90a']
