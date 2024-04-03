@@ -1,5 +1,6 @@
 #!/bin/bash
 cmake \
+    -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_INSTALL_PREFIX="." \
     -DSYCL_LIBRARY_DIR=/opt/intel/oneapi/2024.1/lib \
     -Dpackage_samples=ON \
