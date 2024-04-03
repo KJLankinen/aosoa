@@ -57,7 +57,7 @@ template <typename Var> struct Row<Var> {
     template <typename T>
     friend std::ostream &operator<<(std::ostream &, const Row<T> &);
 
-    using Type = Var::Type;
+    using Type = typename Var::Type;
     static constexpr auto name = Var::name;
 
   private:
@@ -126,7 +126,7 @@ struct Row<Var1, Var2, Vars...> {
     template <typename T1, typename T2, typename... Ts>
     friend std::ostream &operator<<(std::ostream &, const Row<T1, T2, Ts...> &);
 
-    using Type = Var1::Type;
+    using Type = typename Var1::Type;
     static constexpr auto name = Var1::name;
 
   private:

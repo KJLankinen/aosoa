@@ -37,7 +37,7 @@ namespace aosoa {
 template <size_t MIN_ALIGN, typename MemOps, typename... Variables>
 struct StructureOfArrays {
     using ThisAccessor = Accessor<MIN_ALIGN, Variables...>;
-    using FullRow = ThisAccessor::FullRow;
+    using FullRow = typename ThisAccessor::FullRow;
 
   private:
     static_assert(FullRow::unique_names,

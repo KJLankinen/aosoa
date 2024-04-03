@@ -56,7 +56,7 @@ template <size_t MIN_ALIGN, typename... Variables> struct Accessor {
     template <CompileTimeString Cts>
     [[nodiscard]] HOST DEVICE auto get() const {
         using G = GetType<Cts, Variables...>;
-        return static_cast<G::Type *>(pointers[G::i]);
+        return static_cast<typename G::Type *>(pointers[G::i]);
     }
 
     template <size_t I> [[nodiscard]] HOST DEVICE auto get() const {
