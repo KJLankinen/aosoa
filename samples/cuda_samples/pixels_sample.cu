@@ -48,8 +48,6 @@ int main(int , char **) {
     PixelSoa pixel_soa(memory_ops, num_pixels, d_accessor);
 
     init<<<128, 128>>>(d_accessor);
-    result = cudaDeviceSynchronize();
-
     writePixelsToFile(pixel_soa, "pixels_cu.png");
 
     result = cudaStreamDestroy(stream);
