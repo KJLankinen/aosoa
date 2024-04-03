@@ -30,8 +30,7 @@ int main(int , char **) {
     sycl::property_list q_prop{sycl::property::queue::in_order()};
     sycl::queue queue{d, q_prop};
 
-    MemOp memory_ops{SyclHostAllocator{queue}, SyclDeallocator{queue},
-                     SyclMemcpyAsync{queue}, SyclMemsetAsync{queue}};
+    MemOp memory_ops(queue);
 
     Pixels *d_pixels = sycl::malloc_device<Pixels>(1, queue);
     PixelSoa pixel_soa(memory_ops, num_pixels, d_pixels);

@@ -79,11 +79,17 @@ template <bool SYNC> struct SyclMemset {
     }
 };
 
-template <sycl::usm::alloc kind, bool synchronize>
-using SyclMemoryOperations =
-    MemoryOperations<kind == sycl::usm::alloc::device, SyclAllocator<kind>,
-                     SyclDeallocator, SyclMemcpy<synchronize>,
-                     SyclMemset<synchronize>>;
+template <sycl::usm::alloc kind, bool SYNC> struct SyclMemoryOperations {
+    static constexpr bool host_access_requires_copy =
+        kind == sycl::usm::alloc::device;
+    SyclAllocator<kind> allocate;
+    SyclDeallocator deallocate;
+    SyclMemcpy<SYNC> memcpy;
+    SyclMemset<SYNC> memset;
+
+    SyclMemoryOperations(sycl::queue &queue)
+        : allocate(queue), deallocate(queue), memcpy(queue), memset(queue) {}
+};
 
 using SyclDeviceAllocator = SyclAllocator<sycl::usm::alloc::device>;
 using SyclHostAllocator = SyclAllocator<sycl::usm::alloc::host>;
