@@ -19,8 +19,9 @@
 #include "common.h"
 #include "cuda_memory_operations.h"
 
-using PixelSoa = Soa<CudaMemoryOperationsAsync>;
-using Pixels = Acc<CudaMemoryOperationsAsync>;
+using MemOp = CudaDeviceMemoryOperationsAsync;
+using PixelSoa = Soa<MemOp>;
+using Pixels = Acc<MemOp>;
 
 __global__ void init(Pixels *pixels) {
     for (size_t i = threadIdx.x + blockIdx.x * blockDim.x; i < pixels->size();
@@ -33,9 +34,7 @@ int main(int , char **) {
     cudaStream_t stream = {};
     [[maybe_unused]] auto result = cudaStreamCreate(&stream);
 
-    CudaMemoryOperationsAsync memory_ops{CudaAllocator{}, CudaDeallocator{},
-                                         CudaMemcpyAsync(stream),
-                                         CudaMemsetAsync(stream)};
+    MemOp memory_ops(stream);
 
     Pixels *d_accessor = nullptr;
     result = cudaMalloc(&d_accessor, sizeof(Pixels));

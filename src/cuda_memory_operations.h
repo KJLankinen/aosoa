@@ -21,8 +21,6 @@
 #include <cstdlib>
 #include <cuda_runtime.h>
 
-#include "memory_operations.h"
-
 namespace aosoa {
 struct CudaAllocator {
     cudaError_t previous_result = {};
@@ -77,14 +75,17 @@ template <bool SYNC> struct CudaMemset {
     }
 };
 
-using CudaMemcpyAsync = CudaMemcpy<false>;
-using CudaMemsetAsync = CudaMemset<false>;
+template <bool SYNC> struct CudaMemoryOperations {
+    static constexpr bool host_access_requires_copy = SYNC;
+    CudaAllocator allocate;
+    CudaDeallocator deallocate;
+    CudaMemcpy<SYNC> memcpy;
+    CudaMemset<SYNC> memset;
 
-using CudaMemoryOperations =
-    MemoryOperations<true, CudaAllocator, CudaDeallocator, CudaMemcpy<true>,
-                     CudaMemset<true>>;
+    CudaMemoryOperations(cudaStream_t stream)
+        : allocate(), deallocate(), memcpy(stream), memset(stream) {}
+};
 
-using CudaMemoryOperationsAsync =
-    MemoryOperations<true, CudaAllocator, CudaDeallocator, CudaMemcpyAsync,
-                     CudaMemsetAsync>;
+using CudaDeviceMemoryOperations = CudaMemoryOperations<true>;
+using CudaDeviceMemoryOperationsAsync = CudaMemoryOperations<false>;
 } // namespace aosoa
