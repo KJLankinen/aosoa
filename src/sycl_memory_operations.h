@@ -21,8 +21,6 @@
 #include <cstdlib>
 #include <sycl/sycl.hpp>
 
-#include "memory_operations.h"
-
 namespace aosoa {
 template <sycl::usm::alloc kind> struct SyclAllocator {
     const sycl::queue &queue;
@@ -90,12 +88,6 @@ template <sycl::usm::alloc kind, bool SYNC> struct SyclMemoryOperations {
     SyclMemoryOperations(sycl::queue &queue)
         : allocate(queue), deallocate(queue), memcpy(queue), memset(queue) {}
 };
-
-using SyclDeviceAllocator = SyclAllocator<sycl::usm::alloc::device>;
-using SyclHostAllocator = SyclAllocator<sycl::usm::alloc::host>;
-using SyclSharedAllocator = SyclAllocator<sycl::usm::alloc::shared>;
-using SyclMemcpyAsync = SyclMemcpy<false>;
-using SyclMemsetAsync = SyclMemset<false>;
 
 using SyclDeviceMemoryOperations =
     SyclMemoryOperations<sycl::usm::alloc::device, true>;
