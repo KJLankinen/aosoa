@@ -25,73 +25,73 @@
 #pragma once
 
 #include <cstdlib>
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 
 namespace aosoa {
-struct CudaAllocator {
-    cudaError_t previous_result = {};
+struct HipAllocator {
+    hipError_t previous_result = {};
     void *operator()(size_t bytes) noexcept {
         void *ptr = nullptr;
-        previous_result = cudaMalloc(&ptr, bytes);
+        previous_result = hipMalloc(&ptr, bytes);
         return ptr;
     }
 };
 
-struct CudaDeallocator {
-    cudaError_t previous_result = {};
-    void operator()(void *ptr) noexcept { previous_result = cudaFree(ptr); }
+struct HipDeallocator {
+    hipError_t previous_result = {};
+    void operator()(void *ptr) noexcept { previous_result = hipFree(ptr); }
 };
 
-template <bool SYNC> struct CudaMemcpy {
-    cudaError_t previous_result = {};
-    cudaStream_t stream = {};
+template <bool SYNC> struct HipMemcpy {
+    hipError_t previous_result = {};
+    hipStream_t stream = {};
 
-    CudaMemcpy(cudaStream_t stream) : stream(stream) {}
+    HipMemcpy(hipStream_t stream) : stream(stream) {}
 
     void operator()(void *dst, const void *src, size_t bytes,
                     bool synchronize = false) noexcept {
         previous_result =
-            cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDefault, stream);
+            hipMemcpyAsync(dst, src, bytes, hipMemcpyDefault, stream);
         if constexpr (SYNC) {
-            previous_result = cudaDeviceSynchronize();
+            previous_result = hipDeviceSynchronize();
         } else {
             if (synchronize) {
-                previous_result = cudaDeviceSynchronize();
+                previous_result = hipDeviceSynchronize();
             }
         }
     }
 };
 
-template <bool SYNC> struct CudaMemset {
-    cudaError_t previous_result = {};
-    cudaStream_t stream = {};
+template <bool SYNC> struct HipMemset {
+    hipError_t previous_result = {};
+    hipStream_t stream = {};
 
-    CudaMemset(cudaStream_t stream) : stream(stream) {}
+    HipMemset(hipStream_t stream) : stream(stream) {}
 
     void operator()(void *dst, int pattern, size_t bytes,
                     bool synchronize = false) noexcept {
-        previous_result = cudaMemsetAsync(dst, pattern, bytes, stream);
+        previous_result = hipMemsetAsync(dst, pattern, bytes, stream);
         if constexpr (SYNC) {
-            previous_result = cudaDeviceSynchronize();
+            previous_result = hipDeviceSynchronize();
         } else {
             if (synchronize) {
-                previous_result = cudaDeviceSynchronize();
+                previous_result = hipDeviceSynchronize();
             }
         }
     }
 };
 
-template <bool SYNC> struct CudaMemoryOperations {
+template <bool SYNC> struct HipMemoryOperations {
     static constexpr bool host_access_requires_copy = true;
-    CudaAllocator allocate;
-    CudaDeallocator deallocate;
-    CudaMemcpy<SYNC> memcpy;
-    CudaMemset<SYNC> memset;
+    HipAllocator allocate;
+    HipDeallocator deallocate;
+    HipMemcpy<SYNC> memcpy;
+    HipMemset<SYNC> memset;
 
-    CudaMemoryOperations(cudaStream_t stream)
+    HipMemoryOperations(hipStream_t stream)
         : allocate(), deallocate(), memcpy(stream), memset(stream) {}
 };
 
-using CudaDeviceMemoryOperations = CudaMemoryOperations<true>;
-using CudaDeviceMemoryOperationsAsync = CudaMemoryOperations<false>;
+using HipDeviceMemoryOperations = HipMemoryOperations<true>;
+using HipDeviceMemoryOperationsAsync = HipMemoryOperations<false>;
 } // namespace aosoa
